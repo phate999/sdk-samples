@@ -5479,11 +5479,17 @@ def log(value: str = '') -> None:
     """
     try:
         if _cs_client.enable_logging:
-            return _cs_client.log(value)
+            # Running in NCOS so write to the logger
+            _cs_client.logger.info(value)
+        elif _cs_client.ncos:
+            # Running in container so write to stdout
+            with open('/dev/stdout', 'w') as logfile:
+                logfile.write(f'{value}\n')
         else:
-            log(f'{value}\n')
+            # Running in a computer so just use print for the log.
+            print(value)
     except Exception as e:
-        log(f"Error in log request: {e}")
+        print(f"Error in log request: {e}")
 
 def alert(value: str = '') -> Optional[Dict[str, Any]]:
     """Direct access to the underlying alert method.
