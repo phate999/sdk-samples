@@ -5315,76 +5315,80 @@ def get_router_model() -> Optional[str]:
 
 
 def get_gpio(
-    gpio_name: GPIOType, 
-    router_model: Optional[str] = None, 
+    gpio_name: Optional[GPIOType] = None,
+    router_model: Optional[str] = None,
     return_path: bool = False
-) -> Optional[Union[Any, str]]:
-    """Get the current value or path of a specific GPIO.
-    
+) -> Optional[Union[Any, str, Dict[str, Any]]]:
+    """Get GPIO info for a specific pin or all mapped pins.
+
     Args:
-        gpio_name (GPIOType): The name of the GPIO (e.g., 'power_input', 'sata_1').
+        gpio_name (GPIOType | None): Optional GPIO name (e.g., 'power_input'). If None, returns
+            all mapped GPIO values for the model.
         router_model (str, optional): The router model. If None, will be determined automatically.
-        return_path (bool): If True, returns the GPIO path instead of the value. Defaults to False.
-    
+        return_path (bool): If True and gpio_name is provided, returns the GPIO path instead of the value.
+
     Returns:
-        Any, str, or None: The current GPIO value, GPIO path, or None if not found or an error occurs.
+        - If gpio_name is provided and return_path is True: str path
+        - If gpio_name is provided and return_path is False: value of that GPIO (Any) or None
+        - If gpio_name is None: dict of gpio_name -> value for all mapped pins, or None on error
     """
     try:
         if router_model is None:
             router_model = get_router_model()
-        
+
         if not router_model:
             _cs_client.log("Unable to determine router model")
             return None
-        
+
         if router_model not in GPIO_MAP:
             _cs_client.log(f"Router model '{router_model}' not found in GPIO mapping")
             return None
-        
+
+        # If no specific gpio_name, return all mapped GPIOs for this model
+        if gpio_name is None:
+            gpio_values: Dict[str, Any] = {}
+            for mapped_name, mapped_path in GPIO_MAP[router_model].items():
+                try:
+                    value = _cs_client.get(mapped_path)
+                    if value is not None:
+                        gpio_values[mapped_name] = value
+                except Exception as inner_e:
+                    _cs_client.log(f"Error reading GPIO '{mapped_name}': {inner_e}")
+            return gpio_values
+
         if gpio_name not in GPIO_MAP[router_model]:
             _cs_client.log(f"GPIO '{gpio_name}' not found for router model '{router_model}'")
             return None
-        
+
         gpio_path = GPIO_MAP[router_model][gpio_name]
-        
+
         if return_path:
             return gpio_path
-        
-        # Get the GPIO value
+
         response = _cs_client.get(gpio_path)
         return response if response is not None else None
     except Exception as e:
-        _cs_client.log(f"Error getting GPIO {'path' if return_path else 'value'} for '{gpio_name}': {e}")
+        target = 'all GPIOs' if gpio_name is None else f"GPIO {'path' if return_path else 'value'} for '{gpio_name}'"
+        _cs_client.log(f"Error getting {target}: {e}")
         return None
 
 
 def get_all_gpios(router_model: Optional[str] = None) -> Dict[str, Any]:
-    """Get all available GPIO values for the current router model.
-    
+    """Return the raw GPIO structure from `/status/gpio`.
+
+    Note: This returns the device's raw GPIO payload rather than the model-mapped subset.
+
     Args:
-        router_model (str, optional): The router model. If None, will be determined automatically.
-    
+        router_model (str, optional): Unused; kept for backward compatibility.
+
     Returns:
-        dict: Dictionary containing GPIO names as keys and their current values as values.
-              Returns empty dict if an error occurs.
+        dict: Raw GPIO data as provided by the device, or empty dict on error.
     """
     try:
-        if router_model is None:
-            router_model = get_router_model()
-        
-        if not router_model or router_model not in GPIO_MAP:
-            _cs_client.log(f"Router model '{router_model}' not found in GPIO mapping")
-            return {}
-        
-        gpio_values = {}
-        for gpio_name in GPIO_MAP[router_model]:
-            value = get_gpio(gpio_name, router_model)
-            if value is not None:
-                gpio_values[gpio_name] = value
-        
-        return gpio_values
+        response = _cs_client.get('/status/gpio')
+        return response if isinstance(response, dict) else {}
     except Exception as e:
-        _cs_client.log(f"Error getting all GPIO values: {e}")
+        _cs_client.log(f"Error getting raw GPIOs from /status/gpio: {e}")
         return {}
 
 
@@ -5412,27 +5416,7 @@ def get_available_gpios(router_model: Optional[str] = None) -> List[str]:
         return []
 
 
-def get_raw_gpios() -> Optional[Dict[str, Any]]:
-    """Get all GPIO values directly from the router's /status/gpio endpoint.
-    
-    This function returns the raw GPIO data from the router, which includes all
-    available GPIO pins and their current values, regardless of the router model.
-    This is different from get_all_gpios() which only returns GPIOs that
-    are mapped for the specific router model.
-    
-    Returns:
-        dict or None: Dictionary containing all GPIO data from the router, or None if an error occurs.
-                     The structure depends on the router model and may include:
-                     - digital: Dictionary of digital GPIO values
-                     - analog: Dictionary of analog GPIO values (if available)
-                     - Other GPIO-related data specific to the router model
-    """
-    try:
-        response = _cs_client.get('/status/gpio')
-        return response if response is not None else None
-    except Exception as e:
-        _cs_client.log(f"Error getting raw GPIOs from /status/gpio: {e}")
-        return None
+# get_raw_gpios removed; use get_all_gpios() for raw structure
 
 
 def get_ncm_status(include_details: bool = False) -> Optional[str]:
