@@ -51,11 +51,6 @@ from http import HTTPStatus
 from datetime import datetime, timedelta
 from enum import Enum
 
-try:
-    pass  # traceback already imported above
-except ImportError:
-    traceback = None
-
 
 class SdkCSException(Exception):
     """Custom exception for SDK communication errors.
@@ -186,7 +181,7 @@ class CSClient(object):
 
             except (requests.exceptions.Timeout,
                     requests.exceptions.ConnectionError):
-                print("Timeout: device at {} did not respond.".format(device_ip))
+                self.log("Timeout: device at {} did not respond.".format(device_ip))
                 return None
 
             return json.loads(response.text).get('data')
@@ -216,7 +211,7 @@ class CSClient(object):
             return self._dispatch(cmd).get('data')
         else:
             # Running in a computer and can't actually send the alert.
-            print('Decrypt is only available when running the app in NCOS.')
+            self.log('Decrypt is only available when running the app in NCOS.')
 
     def put(self, base: str, value: Any = '', query: str = '', tree: int = 0) -> Optional[Dict[str, Any]]:
         """Construct and send a PUT request to update or add specified data to the device router tree.
@@ -256,7 +251,7 @@ class CSClient(object):
                                         data={"data": '{}'.format(value)})
             except (requests.exceptions.Timeout,
                     requests.exceptions.ConnectionError):
-                print("Timeout: device at {} did not respond.".format(device_ip))
+                self.log("Timeout: device at {} did not respond.".format(device_ip))
                 return None
 
             return json.loads(response.text)
@@ -298,7 +293,7 @@ class CSClient(object):
                                         data={"data": '{}'.format(value)})
             except (requests.exceptions.Timeout,
                     requests.exceptions.ConnectionError):
-                print("Timeout: device at {} did not respond.".format(device_ip))
+                self.log("Timeout: device at {} did not respond.".format(device_ip))
                 return None
 
             return json.loads(response.text)
@@ -343,7 +338,7 @@ class CSClient(object):
                                         data={"data": '{}'.format(json.dumps(value))})
             except (requests.exceptions.Timeout,
                     requests.exceptions.ConnectionError):
-                print("Timeout: device at {} did not respond.".format(device_ip))
+                self.log("Timeout: device at {} did not respond.".format(device_ip))
                 return None
 
             return json.loads(response.text)
@@ -382,7 +377,7 @@ class CSClient(object):
                                         data={"data": '{}'.format(base)})
             except (requests.exceptions.Timeout,
                     requests.exceptions.ConnectionError):
-                print("Timeout: device at {} did not respond.".format(device_ip))
+                self.log("Timeout: device at {} did not respond.".format(device_ip))
                 return None
 
             return json.loads(response.text)
@@ -405,8 +400,8 @@ class CSClient(object):
             return self._dispatch(cmd)
         else:
             # Running in a computer and can't actually send the alert.
-            print('Alert is only available when running the app in NCOS.')
-            print('Alert Text: {}'.format(value))
+            self.log('Alert is only available when running the app in NCOS.')
+            self.log('Alert Text: {}'.format(value))
 
     def log(self, value: str = '') -> None:
         """Add an INFO log to the device SYSLOG.
@@ -423,8 +418,8 @@ class CSClient(object):
             self.logger.info(value)
         elif self.ncos:
             # Running in container so write to stdout
-            with open('/dev/stdout', 'w') as log:
-                log.write(f'{value}\n')
+            with open('/dev/stdout', 'w') as logfile:
+                logfile.write(f'{value}\n')
         else:
             # Running in a computer so just use print for the log.
             print(value)
@@ -527,23 +522,23 @@ class CSClient(object):
                     if ip_key in config[sdk_key]:
                         device_ip = config[sdk_key][ip_key]
                     else:
-                        print('ERROR 1: The {} key does not exist in {}'.format(ip_key, settings_file))
+                        log('ERROR 1: The {} key does not exist in {}'.format(ip_key, settings_file))
 
                     if username_key in config[sdk_key]:
                         device_username = config[sdk_key][username_key]
                     else:
-                        print('ERROR 2: The {} key does not exist in {}'.format(username_key, settings_file))
+                        log('ERROR 2: The {} key does not exist in {}'.format(username_key, settings_file))
 
                     if password_key in config[sdk_key]:
                         device_password = config[sdk_key][password_key]
                     else:
-                        print('ERROR 3: The {} key does not exist in {}'.format(password_key, settings_file))
+                        log('ERROR 3: The {} key does not exist in {}'.format(password_key, settings_file))
                 else:
-                    print('ERROR 4: The {} section does not exist in {}'.format(sdk_key, settings_file))
+                    log('ERROR 4: The {} section does not exist in {}'.format(sdk_key, settings_file))
 
             return device_ip, device_username, device_password
         except Exception as e:
-            print(f"Error getting device access info: {e}")
+            log(f"Error getting device access info: {e}")
             return '', '', ''
 
     def _safe_dispatch(self, cmd: str) -> Dict[str, Any]:
@@ -562,7 +557,7 @@ class CSClient(object):
                 return self._receive(sock)
         except Exception as e:
             self.log(f"Error in safe dispatch: {e}")
-            return {"status": "error", "data": str(e)}
+            return None
 
     def _dispatch(self, cmd: str) -> Dict[str, Any]:
         """Safely dispatch a command to the router.
@@ -836,7 +831,7 @@ class EventingCSClient(CSClient):
         """Get GPS status and return detailed information with decimal coordinates.
         
         Returns:
-            dict: Dictionary containing GPS status information including:
+            Dict[str, Any]: GPS status information including:
 
                 - gps_lock (bool): Whether GPS has a lock
                 - satellites (int): Number of satellites in view
@@ -905,13 +900,13 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing GPS status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_system_status(self) -> Dict[str, Any]:
         """Get system status and return detailed information.
         
         Returns:
-            dict: Dictionary containing system status information including:
+            Dict[str, Any]: System status information including:
 
                 - uptime (int): System uptime in seconds
                 - temperature (float): System temperature
@@ -1001,13 +996,13 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing system status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_description(self) -> Dict[str, Any]:
         """Get device description from system configuration.
         
         Returns:
-            dict: Dictionary containing device description information including:
+            Dict[str, Any]: Device description information including:
                 - description (str): Device description text
                 - timestamp (str): Timestamp when the description was retrieved
         """
@@ -1022,13 +1017,13 @@ class EventingCSClient(CSClient):
             }
         except Exception as e:
             self.log(f"Error getting device description: {e}")
-            return {"description": "", "error": str(e)}
+            return None
 
     def get_asset_id(self) -> Dict[str, Any]:
         """Get device asset ID from system configuration.
         
         Returns:
-            dict: Dictionary containing device asset ID information including:
+            Dict[str, Any]: Device asset ID information including:
                 - asset_id (str): Device asset ID
                 - timestamp (str): Timestamp when the asset ID was retrieved
         """
@@ -1043,7 +1038,7 @@ class EventingCSClient(CSClient):
             }
         except Exception as e:
             self.log(f"Error getting device asset ID: {e}")
-            return {"asset_id": "", "error": str(e)}
+            return None
 
     def set_description(self, description: str) -> Dict[str, Any]:
         """Set device description in system configuration.
@@ -1060,7 +1055,7 @@ class EventingCSClient(CSClient):
         try:
             result = self.put('config/system/desc', description)
             if result is None:
-                return {"success": False, "description": description, "error": "Failed to set description"}
+                return None
             
             return {
                 "success": True,
@@ -1069,7 +1064,7 @@ class EventingCSClient(CSClient):
             }
         except Exception as e:
             self.log(f"Error setting device description: {e}")
-            return {"success": False, "description": description, "error": str(e)}
+            return None
 
     def set_asset_id(self, asset_id: str) -> Dict[str, Any]:
         """Set device asset ID in system configuration.
@@ -1086,7 +1081,7 @@ class EventingCSClient(CSClient):
         try:
             result = self.put('config/system/asset_id', asset_id)
             if result is None:
-                return {"success": False, "asset_id": asset_id, "error": "Failed to set asset ID"}
+                return None
             
             return {
                 "success": True,
@@ -1095,7 +1090,7 @@ class EventingCSClient(CSClient):
             }
         except Exception as e:
             self.log(f"Error setting device asset ID: {e}")
-            return {"success": False, "asset_id": asset_id, "error": str(e)}
+            return None
 
     def set_name(self, name: str) -> Dict[str, Any]:
         """Set device name in system configuration.
@@ -1112,7 +1107,7 @@ class EventingCSClient(CSClient):
         try:
             result = self.put('config/system/system_id', name)
             if result is None:
-                return {"success": False, "name": name, "error": "Failed to set name"}
+                return None
             
             return {
                 "success": True,
@@ -1121,13 +1116,13 @@ class EventingCSClient(CSClient):
             }
         except Exception as e:
             self.log(f"Error setting device name: {e}")
-            return {"success": False, "name": name, "error": str(e)}
+            return None
 
     def get_wlan_status(self) -> Dict[str, Any]:
         """Get WLAN status and return detailed information.
         
         Returns:
-            dict: Dictionary containing WLAN status information including:
+            Dict[str, Any]: WLAN status information including:
 
                 - wlan_state (str): WLAN operational state
                 - radios (list): List of radio information including:
@@ -1181,13 +1176,13 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing WLAN status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_wan_status(self) -> Dict[str, Any]:
         """Get WAN status and return detailed information.
         
         Returns:
-            dict: Dictionary containing WAN status information including:
+            Dict[str, Any]: WAN status information including:
                 - primary_device (str): Primary WAN device identifier
                 - connection_state (str): Overall connection state
                 - cellular_health_score (str): Overall cellular health score
@@ -1352,13 +1347,13 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing WAN status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_wan_devices(self) -> Dict[str, Any]:
         """Get WAN device information only.
         
         Returns:
-            dict: Dictionary containing WAN device information including:
+            Dict[str, Any]: WAN device information including:
                 - primary_device (str): Primary WAN device identifier
                 - devices (list): List of WAN device information including:
                     - uid (str): Device unique identifier
@@ -1393,7 +1388,7 @@ class EventingCSClient(CSClient):
             }
         except Exception as e:
             self.log(f"Error analyzing WAN devices: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_wan_modem_diagnostics(self, device_id: str) -> Dict[str, Any]:
         """Get modem diagnostics for a specific WAN device.
@@ -1402,78 +1397,73 @@ class EventingCSClient(CSClient):
             device_id (str): WAN device identifier to get diagnostics for
             
         Returns:
-            dict: Dictionary containing modem diagnostics including:
-                - device_id (str): Device identifier
-                - diagnostics (dict): Modem diagnostics including:
-                    - active_apn (str): Active APN name
-                    - carrier_id (str): Carrier identifier
-                    - cell_id (str): Cell tower identifier
-                    - cur_plmn (str): Current PLMN code
-                    - dbm (str): Signal strength in dBm
-                    - imei (str): Device IMEI
-                    - lte_bandwidth (str): LTE bandwidth
-                    - model (str): Device model
-                    - mdn (str): Mobile directory number
-                    - home_carrier (str): Home carrier
-                    - phy_cell_id (str): Physical cell ID
-                    - rf_band (str): Radio frequency band
-                    - rf_channel (str): Radio frequency channel
-                    - rsrp (str): Reference signal received power
-                    - rsrq (str): Reference signal received quality
-                    - service_discovery (str): Service discovery info
-                    - sim_number (str): SIM slot number
-                    - sinr (str): Signal to interference plus noise ratio
-                    - service_type (str): Service type (4G/5G)
-                    - service_type_details (str): Detailed service information
-                    - tac (str): Tracking area code
-                    - dl_frequency (str): Downlink frequency
-                    - ul_frequency (str): Uplink frequency
-                    - rsrp_5g (str): 5G RSRP value
-                    - rsrq_5g (str): 5G RSRQ value
-                    - sinr_5g (str): 5G SINR value
+            Dict[str, Any]: Modem diagnostics including:
+                - active_apn (str): Active APN name
+                - carrier_id (str): Carrier identifier
+                - cell_id (str): Cell tower identifier
+                - cur_plmn (str): Current PLMN code
+                - dbm (str): Signal strength in dBm
+                - imei (str): Device IMEI
+                - lte_bandwidth (str): LTE bandwidth
+                - model (str): Device model
+                - mdn (str): Mobile directory number
+                - home_carrier (str): Home carrier
+                - phy_cell_id (str): Physical cell ID
+                - rf_band (str): Radio frequency band
+                - rf_channel (str): Radio frequency channel
+                - rsrp (str): Reference signal received power
+                - rsrq (str): Reference signal received quality
+                - service_discovery (str): Service discovery info
+                - sim_number (str): SIM slot number
+                - sinr (str): Signal to interference plus noise ratio
+                - service_type (str): Service type (4G/5G)
+                - service_type_details (str): Detailed service information
+                - tac (str): Tracking area code
+                - dl_frequency (str): Downlink frequency
+                - ul_frequency (str): Uplink frequency
+                - rsrp_5g (str): 5G RSRP value
+                - rsrq_5g (str): 5G RSRQ value
+                - sinr_5g (str): 5G SINR value
         """
         try:
             if not device_id.startswith("mdm"):
-                return {"device_id": device_id, "error": "Device is not a modem"}
+                return None
             
             diagnostics = self.get(f'status/wan/devices/{device_id}/diagnostics')
             if not diagnostics:
-                return {"device_id": device_id}
+                return None
             
             return {
-                "device_id": device_id,
-                "diagnostics": {
-                    "active_apn": diagnostics.get("ACTIVEAPN"),
-                    "carrier_id": diagnostics.get("CARRID"),
-                    "cell_id": diagnostics.get("CELL_ID"),
-                    "cur_plmn": diagnostics.get("CUR_PLMN"),
-                    "dbm": diagnostics.get("DBM"),
-                    "imei": diagnostics.get("DISP_IMEI"),
-                    "lte_bandwidth": diagnostics.get("LTEBANDWIDTH"),
-                    "model": diagnostics.get("MDL"),
-                    "mdn": diagnostics.get("MDN"),
-                    "home_carrier": diagnostics.get("HOMECARRID"),
-                    "phy_cell_id": diagnostics.get("PHY_CELL_ID"),
-                    "rf_band": diagnostics.get("RFBAND"),
-                    "rf_channel": diagnostics.get("RFCHANNEL"),
-                    "rsrp": diagnostics.get("RSRP"),
-                    "rsrq": diagnostics.get("RSRQ"),
-                    "service_discovery": diagnostics.get("SERDIS"),
-                    "sim_number": diagnostics.get("SIM_NUM"),
-                    "sinr": diagnostics.get("SINR"),
-                    "service_type": diagnostics.get("SRVC_TYPE"),
-                    "service_type_details": diagnostics.get("SRVC_TYPE_DETAILS"),
-                    "tac": diagnostics.get("TAC"),
-                    "dl_frequency": diagnostics.get("DLFRQ"),
-                    "ul_frequency": diagnostics.get("ULFRQ"),
-                    "rsrp_5g": diagnostics.get("RSRP_5G"),
-                    "rsrq_5g": diagnostics.get("RSRQ_5G"),
-                    "sinr_5g": diagnostics.get("SINR_5G")
-                }
+                "active_apn": diagnostics.get("ACTIVEAPN"),
+                "carrier_id": diagnostics.get("CARRID"),
+                "cell_id": diagnostics.get("CELL_ID"),
+                "cur_plmn": diagnostics.get("CUR_PLMN"),
+                "dbm": diagnostics.get("DBM"),
+                "imei": diagnostics.get("DISP_IMEI"),
+                "lte_bandwidth": diagnostics.get("LTEBANDWIDTH"),
+                "model": diagnostics.get("MDL"),
+                "mdn": diagnostics.get("MDN"),
+                "home_carrier": diagnostics.get("HOMECARRID"),
+                "phy_cell_id": diagnostics.get("PHY_CELL_ID"),
+                "rf_band": diagnostics.get("RFBAND"),
+                "rf_channel": diagnostics.get("RFCHANNEL"),
+                "rsrp": diagnostics.get("RSRP"),
+                "rsrq": diagnostics.get("RSRQ"),
+                "service_discovery": diagnostics.get("SERDIS"),
+                "sim_number": diagnostics.get("SIM_NUM"),
+                "sinr": diagnostics.get("SINR"),
+                "service_type": diagnostics.get("SRVC_TYPE"),
+                "service_type_details": diagnostics.get("SRVC_TYPE_DETAILS"),
+                "tac": diagnostics.get("TAC"),
+                "dl_frequency": diagnostics.get("DLFRQ"),
+                "ul_frequency": diagnostics.get("ULFRQ"),
+                "rsrp_5g": diagnostics.get("RSRP_5G"),
+                "rsrq_5g": diagnostics.get("RSRQ_5G"),
+                "sinr_5g": diagnostics.get("SINR_5G")
             }
         except Exception as e:
             self.log(f"Error getting modem diagnostics for {device_id}: {e}")
-            return {"device_id": device_id, "error": str(e)}
+            return None
 
     def get_wan_modem_stats(self, device_id: str) -> Dict[str, Any]:
         """Get modem statistics for a specific WAN device.
@@ -1482,46 +1472,41 @@ class EventingCSClient(CSClient):
             device_id (str): WAN device identifier to get statistics for
             
         Returns:
-            dict: Dictionary containing modem statistics including:
-                - device_id (str): Device identifier
-                - stats (dict): Modem statistics including:
-                    - collisions (int): Collision count
-                    - idrops (int): Input drop count
-                    - ierrors (int): Input error count
-                    - in_bytes (int): Input bytes
-                    - ipackets (int): Input packet count
-                    - multicast (int): Multicast count
-                    - odrops (int): Output drop count
-                    - oerrors (int): Output error count
-                    - opackets (int): Output packet count
-                    - out_bytes (int): Output bytes
+            Dict[str, Any]: Modem statistics including:
+                - collisions (int): Collision count
+                - idrops (int): Input drop count
+                - ierrors (int): Input error count
+                - in_bytes (int): Input bytes
+                - ipackets (int): Input packet count
+                - multicast (int): Multicast count
+                - odrops (int): Output drop count
+                - oerrors (int): Output error count
+                - opackets (int): Output packet count
+                - out_bytes (int): Output bytes
         """
         try:
             if not device_id.startswith("mdm"):
-                return {"device_id": device_id, "error": "Device is not a modem"}
+                return None
             
             stats = self.get(f'status/wan/devices/{device_id}/stats')
             if not stats:
-                return {"device_id": device_id}
+                return None
             
             return {
-                "device_id": device_id,
-                "stats": {
-                    "collisions": stats.get("collisions"),
-                    "idrops": stats.get("idrops"),
-                    "ierrors": stats.get("ierrors"),
-                    "in_bytes": stats.get("in"),
-                    "ipackets": stats.get("ipackets"),
-                    "multicast": stats.get("multicast"),
-                    "odrops": stats.get("odrops"),
-                    "oerrors": stats.get("oerrors"),
-                    "opackets": stats.get("opackets"),
-                    "out_bytes": stats.get("out")
-                }
+                "collisions": stats.get("collisions"),
+                "idrops": stats.get("idrops"),
+                "ierrors": stats.get("ierrors"),
+                "in_bytes": stats.get("in"),
+                "ipackets": stats.get("ipackets"),
+                "multicast": stats.get("multicast"),
+                "odrops": stats.get("odrops"),
+                "oerrors": stats.get("oerrors"),
+                "opackets": stats.get("opackets"),
+                "out_bytes": stats.get("out")
             }
         except Exception as e:
             self.log(f"Error getting modem stats for {device_id}: {e}")
-            return {"device_id": device_id, "error": str(e)}
+            return None
 
     def get_wan_ethernet_info(self, device_id: str) -> Dict[str, Any]:
         """Get ethernet device information for a specific WAN device.
@@ -1530,76 +1515,67 @@ class EventingCSClient(CSClient):
             device_id (str): WAN device identifier to get information for
             
         Returns:
-            dict: Dictionary containing ethernet device information including:
-                - device_id (str): Device identifier
-                - info (dict): Ethernet device information including:
-                    - capabilities (str): Device capabilities
-                    - config_id (str): Configuration identifier
-                    - interface (str): Interface name
-                    - mac_address (str): MAC address
-                    - mtu (int): Maximum transmission unit
-                    - port (str): Port number
-                    - port_name (dict): Port name mapping
-                    - type (str): Device type
+            Dict[str, Any]: Ethernet device information including:
+                - capabilities (str): Device capabilities
+                - config_id (str): Configuration identifier
+                - interface (str): Interface name
+                - mac_address (str): MAC address
+                - mtu (int): Maximum transmission unit
+                - port (str): Port number
+                - port_name (dict): Port name mapping
+                - type (str): Device type
         """
         try:
             if not device_id.startswith("ethernet"):
-                return {"device_id": device_id, "error": "Device is not ethernet"}
+                return None
             
             info = self.get(f'status/wan/devices/{device_id}/info')
             if not info:
-                return {"device_id": device_id}
+                return None
             
             return {
-                "device_id": device_id,
-                "info": {
-                    "capabilities": info.get("capabilities"),
-                    "config_id": info.get("config_id"),
-                    "interface": info.get("iface"),
-                    "mac_address": info.get("mac"),
-                    "mtu": info.get("mtu"),
-                    "port": info.get("port"),
-                    "port_name": info.get("port_name"),
-                    "type": info.get("type")
-                }
+                "capabilities": info.get("capabilities"),
+                "config_id": info.get("config_id"),
+                "interface": info.get("iface"),
+                "mac_address": info.get("mac"),
+                "mtu": info.get("mtu"),
+                "port": info.get("port"),
+                "port_name": info.get("port_name"),
+                "type": info.get("type")
             }
         except Exception as e:
             self.log(f"Error getting ethernet info for {device_id}: {e}")
-            return {"device_id": device_id, "error": str(e)}
+            return None
 
-    def get_wan_connection_state(self) -> Dict[str, Any]:
+    def get_wan_connection_state(self) -> Optional[str]:
         """Get WAN connection state status.
         
         Returns:
-            dict: Dictionary containing WAN connection state information including:
-                - connection_state (str): Overall WAN connection state
-                - timestamp (str): Timestamp when the state was retrieved
+            Optional[str]: WAN connection state string
         """
         try:
             return self.get('status/wan/connection_state')
         except Exception as e:
             self.log(f"Error getting WAN connection state: {e}")
-            return {"connection_state": "error", "error": str(e)}
+            return None
 
-    def get_wan_ip_address(self) -> Dict[str, Any]:
+    def get_wan_ip_address(self) -> Optional[str]:
         """Get WAN IP address information.
         
         Returns:
-            dict: Dictionary containing WAN IP address information including:
-                - ip_address (str): WAN IP address
-                - timestamp (str): Timestamp when the IP address was retrieved
+            Optional[str]: WAN IP address string
         """
         try:
             return self.get('status/wan/ipinfo/ip_address')  
         except Exception as e:
             self.log(f"Error getting WAN IP address: {e}")
-            return {"ip_address": None, "error": str(e)}
+            return None
 
     def get_lan_status(self) -> Dict[str, Any]:
         """Get LAN status and return detailed information.
         
         Returns:
-            dict: Dictionary containing LAN status information including:
+            Dict[str, Any]: LAN status information including:
                 - total_ipv4_clients (int): Number of connected IPv4 clients
                 - total_ipv6_clients (int): Number of connected IPv6 clients
                 - lan_stats (dict): Overall LAN statistics including:
@@ -1751,13 +1727,13 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing LAN status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_lan_clients(self) -> Dict[str, Any]:
         """Get LAN client information only.
         
         Returns:
-            dict: Dictionary containing LAN client information including:
+            Dict[str, Any]: LAN client information including:
                 - total_ipv4_clients (int): Number of connected IPv4 clients
                 - total_ipv6_clients (int): Number of connected IPv6 clients
                 - ipv4_clients (list): List of connected IPv4 clients including:
@@ -1785,13 +1761,13 @@ class EventingCSClient(CSClient):
             }
         except Exception as e:
             self.log(f"Error analyzing LAN clients: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_lan_networks(self) -> Dict[str, Any]:
         """Get LAN network information only.
         
         Returns:
-            dict: Dictionary containing LAN network information including:
+            Dict[str, Any]: LAN network information including:
                 - networks (list): List of network information including:
                     - name (str): Network identifier
                     - display_name (str): Human-readable network name
@@ -1843,13 +1819,13 @@ class EventingCSClient(CSClient):
             }
         except Exception as e:
             self.log(f"Error analyzing LAN networks: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_lan_devices(self) -> Dict[str, Any]:
         """Get LAN device information only.
         
         Returns:
-            dict: Dictionary containing LAN device information including:
+            Dict[str, Any]: LAN device information including:
                 - devices (list): List of device information including:
                     - name (str): Device name
                     - interface (str): Device interface
@@ -1878,7 +1854,7 @@ class EventingCSClient(CSClient):
             }
         except Exception as e:
             self.log(f"Error analyzing LAN devices: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_lan_statistics(self) -> Dict[str, Any]:
         """Get overall LAN statistics only.
@@ -1928,7 +1904,7 @@ class EventingCSClient(CSClient):
             }
         except Exception as e:
             self.log(f"Error analyzing LAN statistics: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_lan_device_stats(self, device_name: str) -> Dict[str, Any]:
         """Get statistics for a specific LAN device.
@@ -1937,49 +1913,44 @@ class EventingCSClient(CSClient):
             device_name (str): Name of the LAN device to get statistics for
             
         Returns:
-            dict: Dictionary containing device statistics including:
-                - device_name (str): Name of the device
-                - stats (dict): Device statistics including:
-                    - collisions (int): Collision count
-                    - idrops (int): Input drop count
-                    - ierrors (int): Input error count
-                    - in_bytes (int): Input bytes
-                    - ipackets (int): Input packet count
-                    - multicast (int): Multicast count
-                    - odrops (int): Output drop count
-                    - oerrors (int): Output error count
-                    - opackets (int): Output packet count
-                    - out_bytes (int): Output bytes
+            Dict[str, Any]: Device statistics including:
+                - collisions (int): Collision count
+                - idrops (int): Input drop count
+                - ierrors (int): Input error count
+                - in_bytes (int): Input bytes
+                - ipackets (int): Input packet count
+                - multicast (int): Multicast count
+                - odrops (int): Output drop count
+                - oerrors (int): Output error count
+                - opackets (int): Output packet count
+                - out_bytes (int): Output bytes
         """
         try:
             device_stats = self.get(f'status/lan/devices/{device_name}/stats')
             if not device_stats:
-                return {"device_name": device_name}
+                return None
             
             return {
-                "device_name": device_name,
-                "stats": {
-                    "collisions": device_stats.get("collisions"),
-                    "idrops": device_stats.get("idrops"),
-                    "ierrors": device_stats.get("ierrors"),
-                    "in_bytes": device_stats.get("in"),
-                    "ipackets": device_stats.get("ipackets"),
-                    "multicast": device_stats.get("multicast"),
-                    "odrops": device_stats.get("odrops"),
-                    "oerrors": device_stats.get("oerrors"),
-                    "opackets": device_stats.get("opackets"),
-                    "out_bytes": device_stats.get("out")
-                }
+                "collisions": device_stats.get("collisions"),
+                "idrops": device_stats.get("idrops"),
+                "ierrors": device_stats.get("ierrors"),
+                "in_bytes": device_stats.get("in"),
+                "ipackets": device_stats.get("ipackets"),
+                "multicast": device_stats.get("multicast"),
+                "odrops": device_stats.get("odrops"),
+                "oerrors": device_stats.get("oerrors"),
+                "opackets": device_stats.get("opackets"),
+                "out_bytes": device_stats.get("out")
             }
         except Exception as e:
             self.log(f"Error getting device stats for {device_name}: {e}")
-            return {"device_name": device_name, "error": str(e)}
+            return None
 
     def get_openvpn_status(self) -> Dict[str, Any]:
         """Get OpenVPN status and return detailed information.
         
         Returns:
-            dict: Dictionary containing OpenVPN status information including:
+            Dict[str, Any]: OpenVPN status information including:
                 - tunnels_configured (int): Number of configured tunnels
                 - tunnels_active (int): Number of active tunnels
                 - stats_available (bool): Whether statistics are available
@@ -1998,13 +1969,13 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing OpenVPN status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_hotspot_status(self) -> Dict[str, Any]:
         """Get hotspot status and return detailed information.
         
         Returns:
-            dict: Dictionary containing hotspot status information including:
+            Dict[str, Any]: Hotspot status information including:
                 - clients_connected (int): Number of connected clients
                 - sessions_active (int): Number of active sessions
                 - domains_allowed (int): Number of allowed domains
@@ -2027,13 +1998,13 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing hotspot status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_obd_status(self) -> Dict[str, Any]:
         """Get OBD status and return detailed information.
         
         Returns:
-            dict: Dictionary containing OBD status information including:
+            Dict[str, Any]: OBD status information including:
                 - adapter_configured (bool): Whether OBD adapter is configured
                 - adapter_connected (bool): Whether OBD adapter is connected
                 - vehicle_connected (bool): Whether vehicle is connected
@@ -2090,13 +2061,13 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing OBD status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_qos_status(self) -> Dict[str, Any]:
         """Get QoS status and return detailed information.
         
         Returns:
-            dict: Dictionary containing QoS status information including:
+            Dict[str, Any]: QoS status information including:
                 - qos_enabled (bool): Whether QoS is enabled
                 - queues_configured (int): Number of configured queues
                 - queues_active (int): Number of active queues
@@ -2118,13 +2089,13 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing QoS status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_firewall_status(self) -> Dict[str, Any]:
         """Get firewall status and return detailed information.
         
         Returns:
-            dict: Dictionary containing firewall status information including:
+            Dict[str, Any]: Firewall status information including:
                 - connections_tracked (int): Number of tracked connections
                 - state_timeouts (dict): State timeout configurations
                 - hitcounters (list): List of firewall rule hit counters
@@ -2155,13 +2126,13 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing firewall status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_dns_status(self) -> Dict[str, Any]:
         """Get DNS status and return detailed information.
         
         Returns:
-            dict: Dictionary containing DNS status information including:
+            Dict[str, Any]: DNS status information including:
                 - cache_entries (int): Number of cache entries
                 - cache_size (int): Cache size
                 - servers_configured (int): Number of configured DNS servers
@@ -2185,13 +2156,13 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing DNS status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_dhcp_status(self) -> Dict[str, Any]:
         """Get DHCP status and return detailed information.
         
         Returns:
-            dict: Dictionary containing DHCP status information including:
+            Dict[str, Any]: DHCP status information including:
                 - total_leases (int): Total number of DHCP leases
                 - active_leases (int): Number of active leases
                 - leases_by_interface (dict): Leases grouped by interface
@@ -2246,7 +2217,7 @@ class EventingCSClient(CSClient):
             return analysis
         except Exception as e:
             self.log(f"Error analyzing DHCP status: {e}")
-            return {"error": str(e)}
+            return None
 
     def get_wan_primary_device(self) -> Optional[str]:
         """Get the WAN primary device identifier.
@@ -2255,8 +2226,7 @@ class EventingCSClient(CSClient):
             str: Primary WAN device identifier, or None if not available
         """
         try:
-            primary_device = self.get('status/wan/primary_device')
-            return primary_device
+            return self.get('status/wan/primary_device')
         except Exception as e:
             self.log(f"Error retrieving WAN primary device: {e}")
             return None
@@ -2432,7 +2402,7 @@ class EventingCSClient(CSClient):
             
         except Exception as e:
             self.log(f"Error pinging host {host}: {e}")
-            return {'error': str(e)}
+            return None
 
     def traceroute_host(self, host: str, max_hops: int = 30, timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         """Perform traceroute to a host using the router's diagnostic tools.
@@ -2558,7 +2528,7 @@ class EventingCSClient(CSClient):
             
         except Exception as e:
             self.log(f"Error performing traceroute to {host}: {e}")
-            return {'error': str(e)}
+            return None
 
     def _parse_traceroute_hop(self, hop_line: str) -> Optional[Dict[str, Any]]:
         """Parse individual traceroute hop line for detailed metrics.
@@ -2720,7 +2690,7 @@ class EventingCSClient(CSClient):
             
         except Exception as e:
             self.log(f"Error performing speed test: {e}")
-            return {'error': str(e)}
+            return None
     
     def _run_speed_test_with_params(self, speedtest_params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Run a speed test with the given parameters and return raw results.
@@ -2736,7 +2706,7 @@ class EventingCSClient(CSClient):
             start_result = self.put('control/netperf', speedtest_params)
             
             if not start_result:
-                return {'error': 'Failed to start speedtest'}
+                return None
             
             # Wait for completion, checking status periodically
             result = None
@@ -2752,10 +2722,10 @@ class EventingCSClient(CSClient):
                 try_count += 1
             
             if try_count == max_tries:
-                return {'error': 'Speedtest timed out'}
+                return None
             
             if result.get('status') == 'error':
-                return {'error': 'Speedtest failed'}
+                return None
             
             # Get the results from the performance results path
             if result and result.get('results_path'):
@@ -2763,11 +2733,11 @@ class EventingCSClient(CSClient):
                 perf_results = self.get(results_path.lstrip('/'))
                 return perf_results
             else:
-                return {'error': 'No performance results found'}
-            
+                return None
+        
         except Exception as e:
             self.log(f"Error performing speed test: {e}")
-            return {'error': str(e)}
+            return None
     
     def _convert_to_bps(self, throughput: float, throughput_units: str) -> float:
         """Convert throughput value to bits per second.
@@ -2793,10 +2763,13 @@ class EventingCSClient(CSClient):
             return throughput
 
     def stop_speed_test(self) -> Optional[Dict[str, Any]]:
-        """Stop any running speed test."""
+        """Stop any running speed test.
+        
+        Returns:
+            Optional[Dict[str, Any]]: API response from speed test stop command
+        """
         try:
-            result = self.put('control/netperf/stop', '')
-            return {'result': result}
+            return self.put('control/netperf/stop', '')
         except Exception as e:
             self.log(f"Error stopping speed test: {e}")
             return None
@@ -2871,7 +2844,7 @@ class EventingCSClient(CSClient):
             
         except Exception as e:
             self.log(f"Error starting packet capture: {e}")
-            return {'error': str(e)}
+            return None
 
     def stop_packet_capture(self) -> Optional[Dict[str, Any]]:
         """Stop running packet capture.
@@ -2893,7 +2866,7 @@ class EventingCSClient(CSClient):
             
         except Exception as e:
             self.log(f"Error stopping packet capture: {e}")
-            return {'error': str(e)}
+            return None
 
     def get_available_interfaces(self) -> Optional[Dict[str, Any]]:
         """Get available network interfaces for packet capture.
@@ -2953,7 +2926,7 @@ class EventingCSClient(CSClient):
             
         except Exception as e:
             self.log(f"Error getting available interfaces: {e}")
-            return {'error': str(e)}
+            return None
 
     def download_packet_capture(self, filename: str, local_path: str = None, capture_params: dict = None) -> Optional[Dict[str, Any]]:
         """Download a packet capture file.
@@ -3040,7 +3013,7 @@ class EventingCSClient(CSClient):
             
         except Exception as e:
             self.log(f"Error downloading packet capture: {e}")
-            return {'error': str(e)}
+            return None
 
     def start_streaming_capture(self, interface: str = "any", filter: str = "", 
                                wifichannel: str = "", wifichannelwidth: str = "", 
@@ -3410,7 +3383,7 @@ class EventingCSClient(CSClient):
             }
         except Exception as e:
             self.log(f"Error starting file server: {e}")
-            return {'error': str(e)}
+            return None
 
     def create_user(self, username: str, password: str, group: str = "admin") -> dict:
         """Create a new user on the router.
@@ -3840,11 +3813,11 @@ class EventingCSClient(CSClient):
             self.log(f"Error clearing DNS cache: {e}")
             return None
 
-    def get_ncm_router_id(self) -> Optional[Dict[str, Any]]:
+    def get_ncm_router_id(self) -> Optional[str]:
         """Get the router's NCM router ID (ECM client ID).
         
         Returns:
-            int: Router ID
+            Optional[str]: Router ID string
         """
         try:
             # Get ECM client ID
@@ -3853,11 +3826,11 @@ class EventingCSClient(CSClient):
             self.log(f"Error getting NCM router ID: {e}")
             return None
 
-    def get_ncm_group_name(self) -> Optional[Dict[str, Any]]:
+    def get_ncm_group_name(self) -> Optional[str]:
         """Get the router's NCM group name.
 
         Returns:
-            str: Group name
+            Optional[str]: Group name string
         """
         try:
             # Get NCM group name
@@ -3867,11 +3840,11 @@ class EventingCSClient(CSClient):
             self.log(f"Error getting NCM group name: {e}")
             return None
 
-    def get_ncm_account_name(self) -> Optional[Dict[str, Any]]:
+    def get_ncm_account_name(self) -> Optional[str]:
         """Get the router's NCM account name.
 
         Returns:
-            str: Account name
+            Optional[str]: Account name string
         """
         try:
             # Get NCM account name
@@ -3884,16 +3857,10 @@ class EventingCSClient(CSClient):
         """Stop any running ping process.
         
         Returns:
-            bool: Success
+            Optional[Dict[str, Any]]: API response from ping stop command
         """
         try:
-            # Stop ping process
-            result = self.put('control/ping/stop', '')
-            
-            return {
-                'result': result
-            }
-            
+            return self.put('control/ping/stop', '')
         except Exception as e:
             self.log(f"Error stopping ping: {e}")
             return None
@@ -3955,20 +3922,11 @@ class EventingCSClient(CSClient):
                     'success': True
                 }
             else:
-                return {
-                    'device_id': device_or_id if device_or_id.startswith('mdm') else None,
-                    'rule_id': rule_id,
-                    'error': 'Failed to update WAN rule configuration',
-                    'success': False
-                }
+                return None
                 
         except Exception as e:
             self.log(f"Error setting manual APN for {device_or_id}: {e}")
-            return {
-                'device_id': device_or_id if device_or_id.startswith('mdm') else None,
-                'error': str(e),
-                'success': False
-            }
+            return None
 
     def remove_manual_apn(self, device_or_id: str) -> Optional[Dict[str, Any]]:
         """Remove manual APN configuration for a modem device or WAN rule.
@@ -3990,19 +3948,11 @@ class EventingCSClient(CSClient):
                 # Get device info to find the config_id (WAN rule _id_)
                 device_info = self.get(f'status/wan/devices/{device_or_id}/config')
                 if not device_info:
-                    return {
-                        'device_id': device_or_id,
-                        'error': f'Device {device_or_id} not found or no config available',
-                        'success': False
-                    }
+                    return None
                 
                 rule_id = device_info.get('_id_')
                 if not rule_id:
-                    return {
-                        'device_id': device_or_id,
-                        'error': f'No WAN rule _id_ found for device {device_or_id}',
-                        'success': False
-                    }
+                    return None
             else:
                 # Assume it's already a WAN rule _id_
                 rule_id = device_or_id
@@ -4061,12 +4011,7 @@ class EventingCSClient(CSClient):
             for existing_apn in existing_apns:
                 if (existing_apn.get('carrier') == carrier and 
                     existing_apn.get('apn') == apn):
-                    return {
-                        'carrier': carrier,
-                        'apn': apn,
-                        'error': f'Advanced APN for carrier "{carrier}" and APN "{apn}" already exists',
-                        'success': False
-                    }
+                    return None
             
             # Add the new advanced APN to the existing array
             new_apn_entry = {
@@ -4117,12 +4062,7 @@ class EventingCSClient(CSClient):
             # Get existing custom APNs
             existing_apns = self.get('config/wan/custom_apns')
             if not existing_apns:
-                return {
-                    'matched_entries': [],
-                    'deleted_count': 0,
-                    'error': 'No custom APNs found',
-                    'success': False
-                }
+                return None
             
             # Find matching entries and create filtered array
             matched_entries = []
@@ -4365,7 +4305,7 @@ class EventingCSClient(CSClient):
             
         Example:
             def sms_handler(phone_number, message, raw_line):
-                print(f"SMS from {phone_number}: {message}")
+                log(f"SMS from {phone_number}: {message}")
                 # Auto-reply
                 cp.execute_cli(f'sms {phone_number} Thanks for your message!')
             
@@ -4644,7 +4584,7 @@ def _get_app_name() -> str:
         else:
             return 'SDK'
     except Exception as e:
-        print(f"Error getting app name from package.ini: {e}")
+        log(f"Error getting app name from package.ini: {e}")
         return 'SDK'
 
 def _cs_sock_connection() -> bool:
@@ -4755,7 +4695,7 @@ def wait_for_wan_connection(timeout: int = 300) -> bool:
         _cs_client.log(f"Error waiting for WAN connection: {e}")
         return False
 
-def get_appdata(name: str = '') -> Optional[str] | Optional[list[dict]]:
+def get_appdata(name: str = '') -> Union[Optional[str], Optional[List[Dict[str, Any]]]]:
     """Get value of appdata from NCOS Config by name, or all appdata if no name is provided.
 
     Args:
@@ -5322,7 +5262,7 @@ def get_gpio(
     """Get GPIO info for a specific pin or all mapped pins.
 
     Args:
-        gpio_name (GPIOType | None): Optional GPIO name (e.g., 'power_input'). If None, returns
+        gpio_name (Union[GPIOType, None]): Optional GPIO name (e.g., 'power_input'). If None, returns
             all mapped GPIO values for the model.
         router_model (str, optional): The router model. If None, will be determined automatically.
         return_path (bool): If True and gpio_name is provided, returns the GPIO path instead of the value.
@@ -5541,9 +5481,9 @@ def log(value: str = '') -> None:
         if _cs_client.enable_logging:
             return _cs_client.log(value)
         else:
-            print(f'{value}\n')
+            log(f'{value}\n')
     except Exception as e:
-        print(f"Error in log request: {e}")
+        log(f"Error in log request: {e}")
 
 def alert(value: str = '') -> Optional[Dict[str, Any]]:
     """Direct access to the underlying alert method.
@@ -5606,7 +5546,7 @@ def get_logger() -> Any:
     try:
         return _cs_client.logger
     except Exception as e:
-        print(f"Error getting logger: {e}")
+        log(f"Error getting logger: {e}")
         return None
 
 # Monkey patch for cp.uptime()
@@ -5619,7 +5559,7 @@ def uptime() -> float:
     try:
         return time.time()
     except Exception as e:
-        print(f"Error getting uptime: {e}")
+        log(f"Error getting uptime: {e}")
         return 0.0
     
 def clean_up_reg(signal: Any, frame: Any) -> None:
@@ -5637,7 +5577,7 @@ def clean_up_reg(signal: Any, frame: Any) -> None:
         _cs_client.stop()
         sys.exit(0)
     except Exception as e:
-        print(f"Error during cleanup: {e}")
+        log(f"Error during cleanup: {e}")
         sys.exit(1)
 
 
@@ -5655,7 +5595,7 @@ def get_gps_status() -> Dict[str, Any]:
     """Get GPS status and return detailed information.
     
     Returns:
-        dict: Dictionary containing GPS status information including:
+        Dict[str, Any]: GPS status information including:
             - gps_lock (bool): Whether GPS has a lock
             - satellites (int): Number of satellites in view
             - location (dict): GPS coordinates in degrees/minutes/seconds format
@@ -5673,7 +5613,7 @@ def get_system_status() -> Dict[str, Any]:
     """Get system status and return detailed information.
     
     Returns:
-        dict: Dictionary containing system status information including:
+        Dict[str, Any]: System status information including:
             - uptime (int): System uptime in seconds
             - temperature (float): System temperature
             - cpu_usage (dict): CPU usage statistics
@@ -5689,7 +5629,7 @@ def get_wlan_status() -> Dict[str, Any]:
     """Get WLAN status and return detailed information.
     
     Returns:
-        dict: Dictionary containing WLAN status information including:
+        Dict[str, Any]: WLAN status information including:
             - wlan_state (str): WLAN operational state
             - radios (list): List of radio information
             - clients_connected (int): Number of connected clients
@@ -5701,7 +5641,7 @@ def get_wan_status() -> Dict[str, Any]:
     """Get WAN status and return detailed information.
     
     Returns:
-        dict: Dictionary containing WAN status information including:
+        Dict[str, Any]: WAN status information including:
             - primary_device (str): Primary WAN device identifier
             - connection_state (str): Overall connection state
             - cellular_health_score (str): Overall cellular health score
@@ -5766,7 +5706,7 @@ def get_wan_devices() -> Dict[str, Any]:
     """Get WAN device information only.
     
     Returns:
-        dict: Dictionary containing WAN device information including:
+        Dict[str, Any]: WAN device information including:
             - primary_device (str): Primary WAN device identifier
             - devices (list): List of WAN device information including:
                 - uid (str): Device unique identifier
@@ -5785,35 +5725,33 @@ def get_wan_modem_diagnostics(device_id: str) -> Dict[str, Any]:
         device_id (str): WAN device identifier to get diagnostics for
         
     Returns:
-        dict: Dictionary containing modem diagnostics including:
-            - device_id (str): Device identifier
-            - diagnostics (dict): Modem diagnostics including:
-                - active_apn (str): Active APN name
-                - carrier_id (str): Carrier identifier
-                - cell_id (str): Cell tower identifier
-                - cur_plmn (str): Current PLMN code
-                - dbm (str): Signal strength in dBm
-                - imei (str): Device IMEI
-                - lte_bandwidth (str): LTE bandwidth
-                - model (str): Device model
-                - mdn (str): Mobile directory number
-                - home_carrier (str): Home carrier
-                - phy_cell_id (str): Physical cell ID
-                - rf_band (str): Radio frequency band
-                - rf_channel (str): Radio frequency channel
-                - rsrp (str): Reference signal received power
-                - rsrq (str): Reference signal received quality
-                - service_discovery (str): Service discovery info
-                - sim_number (str): SIM slot number
-                - sinr (str): Signal to interference plus noise ratio
-                - service_type (str): Service type (4G/5G)
-                - service_type_details (str): Detailed service information
-                - tac (str): Tracking area code
-                - dl_frequency (str): Downlink frequency
-                - ul_frequency (str): Uplink frequency
-                - rsrp_5g (str): 5G RSRP value
-                - rsrq_5g (str): 5G RSRQ value
-                - sinr_5g (str): 5G SINR value
+        Dict[str, Any]: Modem diagnostics including:
+            - active_apn (str): Active APN name
+            - carrier_id (str): Carrier identifier
+            - cell_id (str): Cell tower identifier
+            - cur_plmn (str): Current PLMN code
+            - dbm (str): Signal strength in dBm
+            - imei (str): Device IMEI
+            - lte_bandwidth (str): LTE bandwidth
+            - model (str): Device model
+            - mdn (str): Mobile directory number
+            - home_carrier (str): Home carrier
+            - phy_cell_id (str): Physical cell ID
+            - rf_band (str): Radio frequency band
+            - rf_channel (str): Radio frequency channel
+            - rsrp (str): Reference signal received power
+            - rsrq (str): Reference signal received quality
+            - service_discovery (str): Service discovery info
+            - sim_number (str): SIM slot number
+            - sinr (str): Signal to interference plus noise ratio
+            - service_type (str): Service type (4G/5G)
+            - service_type_details (str): Detailed service information
+            - tac (str): Tracking area code
+            - dl_frequency (str): Downlink frequency
+            - ul_frequency (str): Uplink frequency
+            - rsrp_5g (str): 5G RSRP value
+            - rsrq_5g (str): 5G RSRQ value
+            - sinr_5g (str): 5G SINR value
     """
     return _cs_client.get_wan_modem_diagnostics(device_id)
 
@@ -5824,19 +5762,17 @@ def get_wan_modem_stats(device_id: str) -> Dict[str, Any]:
         device_id (str): WAN device identifier to get statistics for
         
     Returns:
-        dict: Dictionary containing modem statistics including:
-            - device_id (str): Device identifier
-            - stats (dict): Modem statistics including:
-                - collisions (int): Collision count
-                - idrops (int): Input drop count
-                - ierrors (int): Input error count
-                - in_bytes (int): Input bytes
-                - ipackets (int): Input packet count
-                - multicast (int): Multicast count
-                - odrops (int): Output drop count
-                - oerrors (int): Output error count
-                - opackets (int): Output packet count
-                - out_bytes (int): Output bytes
+        Dict[str, Any]: Modem statistics including:
+            - collisions (int): Collision count
+            - idrops (int): Input drop count
+            - ierrors (int): Input error count
+            - in_bytes (int): Input bytes
+            - ipackets (int): Input packet count
+            - multicast (int): Multicast count
+            - odrops (int): Output drop count
+            - oerrors (int): Output error count
+            - opackets (int): Output packet count
+            - out_bytes (int): Output bytes
     """
     return _cs_client.get_wan_modem_stats(device_id)
 
@@ -5847,17 +5783,15 @@ def get_wan_ethernet_info(device_id: str) -> Dict[str, Any]:
         device_id (str): WAN device identifier to get information for
         
     Returns:
-        dict: Dictionary containing ethernet device information including:
-            - device_id (str): Device identifier
-            - info (dict): Ethernet device information including:
-                - capabilities (str): Device capabilities
-                - config_id (str): Configuration identifier
-                - interface (str): Interface name
-                - mac_address (str): MAC address
-                - mtu (int): Maximum transmission unit
-                - port (str): Port number
-                - port_name (dict): Port name mapping
-                - type (str): Device type
+        Dict[str, Any]: Ethernet device information including:
+            - capabilities (str): Device capabilities
+            - config_id (str): Configuration identifier
+            - interface (str): Interface name
+            - mac_address (str): MAC address
+            - mtu (int): Maximum transmission unit
+            - port (str): Port number
+            - port_name (dict): Port name mapping
+            - type (str): Device type
     """
     return _cs_client.get_wan_ethernet_info(device_id)
 
@@ -5865,7 +5799,7 @@ def get_lan_status() -> Dict[str, Any]:
     """Get LAN status and return detailed information.
     
     Returns:
-        dict: Dictionary containing LAN status information including:
+        Dict[str, Any]: LAN status information including:
             - total_ipv4_clients (int): Number of connected IPv4 clients
             - total_ipv6_clients (int): Number of connected IPv6 clients
             - lan_stats (dict): Overall LAN statistics including:
@@ -5926,7 +5860,7 @@ def get_lan_clients() -> Dict[str, Any]:
     """Get LAN client information only.
     
     Returns:
-        dict: Dictionary containing LAN client information including:
+        Dict[str, Any]: LAN client information including:
             - total_ipv4_clients (int): Number of connected IPv4 clients
             - total_ipv6_clients (int): Number of connected IPv6 clients
             - ipv4_clients (list): List of connected IPv4 clients including:
@@ -5942,7 +5876,7 @@ def get_lan_networks() -> Dict[str, Any]:
     """Get LAN network information only.
     
     Returns:
-        dict: Dictionary containing LAN network information including:
+        Dict[str, Any]: LAN network information including:
             - networks (list): List of network information including:
                 - name (str): Network identifier
                 - display_name (str): Human-readable network name
@@ -5963,7 +5897,7 @@ def get_lan_devices() -> Dict[str, Any]:
     """Get LAN device information only.
     
     Returns:
-        dict: Dictionary containing LAN device information including:
+        Dict[str, Any]: LAN device information including:
             - devices (list): List of device information including:
                 - name (str): Device name
                 - interface (str): Device interface
@@ -6003,19 +5937,17 @@ def get_lan_device_stats(device_name: str) -> Dict[str, Any]:
         device_name (str): Name of the LAN device to get statistics for
         
     Returns:
-        dict: Dictionary containing device statistics including:
-            - device_name (str): Name of the device
-            - stats (dict): Device statistics including:
-                - collisions (int): Collision count
-                - idrops (int): Input drop count
-                - ierrors (int): Input error count
-                - in_bytes (int): Input bytes
-                - ipackets (int): Input packet count
-                - multicast (int): Multicast count
-                - odrops (int): Output drop count
-                - oerrors (int): Output error count
-                - opackets (int): Output packet count
-                - out_bytes (int): Output bytes
+        Dict[str, Any]: Device statistics including:
+            - collisions (int): Collision count
+            - idrops (int): Input drop count
+            - ierrors (int): Input error count
+            - in_bytes (int): Input bytes
+            - ipackets (int): Input packet count
+            - multicast (int): Multicast count
+            - odrops (int): Output drop count
+            - oerrors (int): Output error count
+            - opackets (int): Output packet count
+            - out_bytes (int): Output bytes
     """
     return _cs_client.get_lan_device_stats(device_name)
 
@@ -6023,7 +5955,7 @@ def get_openvpn_status() -> Dict[str, Any]:
     """Get OpenVPN status and return detailed information.
     
     Returns:
-        dict: Dictionary containing OpenVPN status information including:
+        Dict[str, Any]: OpenVPN status information including:
             - tunnels_configured (int): Number of configured tunnels
             - tunnels_active (int): Number of active tunnels
             - stats_available (bool): Whether statistics are available
@@ -6034,7 +5966,7 @@ def get_hotspot_status() -> Dict[str, Any]:
     """Get hotspot status and return detailed information.
     
     Returns:
-        dict: Dictionary containing hotspot status information including:
+        Dict[str, Any]: Hotspot status information including:
             - clients_connected (int): Number of connected clients
             - sessions_active (int): Number of active sessions
             - domains_allowed (int): Number of allowed domains
@@ -6047,7 +5979,7 @@ def get_obd_status() -> Dict[str, Any]:
     """Get OBD status and return detailed information.
     
     Returns:
-        dict: Dictionary containing OBD status information including:
+        Dict[str, Any]: OBD status information including:
             - adapter_configured (bool): Whether OBD adapter is configured
             - adapter_connected (bool): Whether OBD adapter is connected
             - vehicle_connected (bool): Whether vehicle is connected
@@ -6071,7 +6003,7 @@ def get_qos_status() -> Dict[str, Any]:
     """Get QoS status and return detailed information.
     
     Returns:
-        dict: Dictionary containing QoS status information including:
+        Dict[str, Any]: QoS status information including:
             - qos_enabled (bool): Whether QoS is enabled
             - queues_configured (int): Number of configured queues
             - queues_active (int): Number of active queues
@@ -6083,7 +6015,7 @@ def get_firewall_status() -> Dict[str, Any]:
     """Get firewall status and return detailed information.
     
     Returns:
-        dict: Dictionary containing firewall status information including:
+        Dict[str, Any]: Firewall status information including:
             - connections_tracked (int): Number of tracked connections
             - state_timeouts (dict): State timeout configurations
             - hitcounters (list): List of firewall rule hit counters
@@ -6094,7 +6026,7 @@ def get_dns_status() -> Dict[str, Any]:
     """Get DNS status and return detailed information.
     
     Returns:
-        dict: Dictionary containing DNS status information including:
+        Dict[str, Any]: DNS status information including:
             - cache_entries (int): Number of cache entries
             - cache_size (int): Cache size
             - servers_configured (int): Number of configured DNS servers
@@ -6106,7 +6038,7 @@ def get_dhcp_status() -> Dict[str, Any]:
     """Get DHCP status and return detailed information.
     
     Returns:
-        dict: Dictionary containing DHCP status information including:
+        Dict[str, Any]: DHCP status information including:
             - total_leases (int): Total number of DHCP leases
             - active_leases (int): Number of active leases
             - leases_by_interface (dict): Leases grouped by interface
@@ -6291,7 +6223,7 @@ def get_power_usage(include_components: bool = True) -> Optional[Dict[str, Any]]
                                   Defaults to True.
     
     Returns:
-        dict or None: Dictionary containing power usage information including:
+        Optional[Dict[str, Any]]: Power usage information including:
             - total (float): Total power usage
             - system_power (float): System power usage
             - cpu_power (float): CPU power usage
@@ -6614,7 +6546,7 @@ def get_routing_table() -> Optional[Dict[str, Any]]:
     """Return routing table information.
     
     Returns:
-        dict or None: Dictionary containing routing table information including:
+        Optional[Dict[str, Any]]: Routing table information including:
             - static routes
             - dynamic routes
             - routing policies
@@ -6631,7 +6563,7 @@ def get_certificate_status() -> Optional[Dict[str, Any]]:
     """Return certificate management status.
     
     Returns:
-        dict or None: Dictionary containing certificate management information including:
+        Optional[Dict[str, Any]]: Certificate management information including:
             - installed certificates
             - certificate details
             - CA fingerprints
@@ -6651,7 +6583,7 @@ def get_storage_status(include_detailed: bool = False) -> Optional[Dict[str, Any
         include_detailed (bool): Whether to include detailed storage information. Defaults to False.
     
     Returns:
-        dict or None: Dictionary containing storage status information including:
+        Optional[Dict[str, Any]]: Storage status information including:
             - health (str): Storage health status
             - slc_health (str): SLC health status
             - detailed information if include_detailed is True
@@ -6683,7 +6615,7 @@ def get_usb_status(include_all_ports: bool = False) -> Optional[Dict[str, Any]]:
         include_all_ports (bool): Whether to include all USB ports. Defaults to False.
     
     Returns:
-        dict or None: Dictionary containing USB status information including:
+        Optional[Dict[str, Any]]: USB status information including:
             - connection (dict): USB connection status
             - int1 (dict): USB interface 1 information
             - additional port information if include_all_ports is True
@@ -6712,7 +6644,7 @@ def get_poe_status() -> Optional[Dict[str, Any]]:
     """Return Power over Ethernet status.
     
     Returns:
-        dict or None: Dictionary containing PoE status information including:
+        Optional[Dict[str, Any]]: PoE status information including:
             - PoE PSE (Power Sourcing Equipment) status
             - Power delivery information
             - Connected device power requirements
@@ -6729,7 +6661,7 @@ def get_sensors_status() -> Optional[Dict[str, Any]]:
     """Return sensor status information.
     
     Returns:
-        dict or None: Dictionary containing sensor status information including:
+        Optional[Dict[str, Any]]: Sensor status information including:
             - level (dict): Level sensor information
             - day (dict): Day sensor information
     """
@@ -6763,7 +6695,7 @@ def get_apps_status() -> Optional[Dict[str, Any]]:
     """Return both internal system applications and external SDK applications status.
     
     Returns:
-        dict or None: Dictionary containing application status information including:
+        Optional[Dict[str, Any]]: Application status information including:
             - internal_apps (list): List of internal system applications including:
             - app name and identifier
             - app state (started, stopped, etc.)
@@ -6805,14 +6737,14 @@ def get_description() -> Optional[Dict[str, Any]]:
     """Get device description from system configuration.
     
     Returns:
-        dict or None: Dictionary containing device description information including:
+        Optional[Dict[str, Any]]: Device description information including:
             - description (str): Device description text
             - timestamp (str): Timestamp when the description was retrieved
     """
     try:
         return _cs_client.get_description()
     except Exception as e:
-        print(f"Error retrieving device description: {e}")
+        log(f"Error retrieving device description: {e}")
         return None
 
 
@@ -6820,14 +6752,14 @@ def get_asset_id() -> Optional[Dict[str, Any]]:
     """Get device asset ID from system configuration.
     
     Returns:
-        dict or None: Dictionary containing device asset ID information including:
+        Optional[Dict[str, Any]]: Device asset ID information including:
             - asset_id (str): Device asset ID
             - timestamp (str): Timestamp when the asset ID was retrieved
     """
     try:
         return _cs_client.get_asset_id()
     except Exception as e:
-        print(f"Error retrieving device asset ID: {e}")
+        log(f"Error retrieving device asset ID: {e}")
         return None
 
 
@@ -6846,7 +6778,7 @@ def set_description(description: str) -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.set_description(description)
     except Exception as e:
-        print(f"Error setting device description: {e}")
+        log(f"Error setting device description: {e}")
         return None
 
 
@@ -6865,7 +6797,7 @@ def set_asset_id(asset_id: str) -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.set_asset_id(asset_id)
     except Exception as e:
-        print(f"Error setting device asset ID: {e}")
+        log(f"Error setting device asset ID: {e}")
         return None
 
 
@@ -6884,7 +6816,7 @@ def set_name(name: str) -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.set_name(name)
     except Exception as e:
-        print(f"Error setting device name: {e}")
+        log(f"Error setting device name: {e}")
         return None
 
 
@@ -7008,7 +6940,7 @@ def get_vpn_status() -> Optional[Dict[str, Any]]:
     """Return VPN status (OpenVPN, L2TP, etc.).
     
     Returns:
-        dict or None: Dictionary containing VPN status information including:
+        Optional[Dict[str, Any]]: VPN status information including:
             - openvpn (dict): OpenVPN status and configuration
             - l2tp (dict): L2TP status and configuration
             - gre (dict): GRE tunnel status
@@ -7030,7 +6962,7 @@ def get_security_status() -> Optional[Dict[str, Any]]:
     """Return security-related status.
     
     Returns:
-        dict or None: Dictionary containing security status information including:
+        Optional[Dict[str, Any]]: Security status information including:
             - firewall (dict): Firewall status and configuration
             - security (dict): General security settings and status
             - certificates (dict): Certificate management status
@@ -7050,7 +6982,7 @@ def get_iot_status() -> Optional[Dict[str, Any]]:
     """Return IoT-related status.
     
     Returns:
-        dict or None: Dictionary containing IoT status information including:
+        Optional[Dict[str, Any]]: IoT status information including:
             - IoT device information
             - IoT protocol status
             - IoT configuration
@@ -7068,7 +7000,7 @@ def get_hotspot_status() -> Optional[Dict[str, Any]]:
     """Return hotspot status.
     
     Returns:
-        dict or None: Dictionary containing hotspot status information including:
+        Optional[Dict[str, Any]]: Hotspot status information including:
             - connected clients
             - active sessions
             - allowed domains and hosts
@@ -7085,7 +7017,7 @@ def get_sdwan_status() -> Optional[Dict[str, Any]]:
     """Return SD-WAN status with advanced features and monitoring information.
     
     Returns:
-        dict or None: Dictionary containing SD-WAN status information including:
+        Optional[Dict[str, Any]]: SD-WAN status information including:
             - forward_error_correction (dict): FEC statistics and configuration
             - link_monitoring (dict): Link monitoring status and configuration
             - quality_of_experience (dict): QoE metrics and monitoring
@@ -7117,7 +7049,7 @@ def get_wan_profiles() -> Dict[str, Any]:
     """Get all WAN profile rules and their configurations.
     
     Returns:
-        dict: Dictionary containing WAN profile information including:
+        Dict[str, Any]: WAN profile information including:
             - profiles (list): List of WAN profile rules with:
                 - _id_ (str): Unique identifier for the profile
                 - priority (float): Priority value (lower = higher priority)
@@ -7337,11 +7269,7 @@ def set_manual_apn(device_or_id: str, new_apn: str) -> Optional[Dict[str, Any]]:
         return _cs_client.set_manual_apn(device_or_id, new_apn)
     except Exception as e:
         _cs_client.logger.exception(f"Error setting manual APN for {device_or_id}: {e}")
-        return {
-            'device_id': device_or_id if device_or_id.startswith('mdm') else None,
-            'error': str(e),
-            'success': False
-        }
+        return None
 
 def remove_manual_apn(device_or_id: str) -> Optional[Dict[str, Any]]:
     """Remove manual APN configuration for a modem device or WAN rule.
@@ -7359,11 +7287,7 @@ def remove_manual_apn(device_or_id: str) -> Optional[Dict[str, Any]]:
         return _cs_client.remove_manual_apn(device_or_id)
     except Exception as e:
         _cs_client.logger.exception(f"Error removing manual APN for {device_or_id}: {e}")
-        return {
-            'device_id': device_or_id if device_or_id.startswith('mdm') else None,
-            'error': str(e),
-            'success': False
-        }
+        return None
 
 def add_advanced_apn(carrier: str, apn: str) -> Optional[Dict[str, Any]]:
     """Add an advanced APN configuration to the custom APNs list.
@@ -7382,12 +7306,7 @@ def add_advanced_apn(carrier: str, apn: str) -> Optional[Dict[str, Any]]:
         return _cs_client.add_advanced_apn(carrier, apn)
     except Exception as e:
         _cs_client.logger.exception(f"Error adding advanced APN for carrier {carrier} and APN {apn}: {e}")
-        return {
-            'carrier': carrier,
-            'apn': apn,
-            'error': str(e),
-            'success': False
-        }
+        return None
 
 def delete_advanced_apn(carrier_or_apn: str) -> Optional[Dict[str, Any]]:
     """Delete an advanced APN configuration from the custom APNs list.
@@ -7405,12 +7324,7 @@ def delete_advanced_apn(carrier_or_apn: str) -> Optional[Dict[str, Any]]:
         return _cs_client.delete_advanced_apn(carrier_or_apn)
     except Exception as e:
         _cs_client.logger.exception(f"Error deleting advanced APN matching {carrier_or_apn}: {e}")
-        return {
-            'matched_entries': [],
-            'deleted_count': 0,
-            'error': str(e),
-            'success': False
-        }
+        return None
 
 def reorder_wan_profiles(device_priorities: Dict[str, float]) -> bool:
     """Reorder WAN profiles based on desired device priorities.
@@ -7502,7 +7416,7 @@ def get_wan_device_summary() -> Dict[str, Any]:
         # Get all profiles
         profiles = get_wan_profiles()
         if not profiles:
-            return {"error": "Failed to retrieve profiles"}
+            return None
         
         devices_info = []
         priority_order = []
@@ -7540,7 +7454,7 @@ def get_wan_device_summary() -> Dict[str, Any]:
         }
     except Exception as e:
         _cs_client.logger.exception(f"Error getting WAN device summary: {e}")
-        return {"error": str(e)}
+        return None
 
 
 def get_wan_primary_device() -> Optional[str]:
@@ -7552,37 +7466,33 @@ def get_wan_primary_device() -> Optional[str]:
     try:
         return _cs_client.get_wan_primary_device()
     except Exception as e:
-        print(f"Error retrieving WAN primary device: {e}")
+        log(f"Error retrieving WAN primary device: {e}")
         return None
 
 
-def get_wan_connection_state() -> Optional[Dict[str, Any]]:
+def get_wan_connection_state() -> Optional[str]:
     """Get WAN connection state status.
     
     Returns:
-        dict or None: Dictionary containing WAN connection state information including:
-            - connection_state (str): Overall WAN connection state
-            - timestamp (str): Timestamp when the state was retrieved
+        Optional[str]: WAN connection state string
     """
     try:
         return _cs_client.get_wan_connection_state()
     except Exception as e:
-        print(f"Error retrieving WAN connection state: {e}")
+        log(f"Error retrieving WAN connection state: {e}")
         return None
 
 
-def get_wan_ip_address() -> Optional[Dict[str, Any]]:
+def get_wan_ip_address() -> Optional[str]:
     """Get WAN IP address information.
     
     Returns:
-        dict or None: Dictionary containing WAN IP address information including:
-            - ip_address (str): WAN IP address
-            - timestamp (str): Timestamp when the IP address was retrieved
+        Optional[str]: WAN IP address string
     """
     try:
         return _cs_client.get_wan_ip_address()
     except Exception as e:
-        print(f"Error retrieving WAN IP address: {e}")
+        log(f"Error retrieving WAN IP address: {e}")
         return None
 
 
@@ -8510,7 +8420,7 @@ def ping_host(host: str, count: int = 4, timeout: float = 15.0,
     try:
         return _cs_client.ping_host(host, count, timeout, interval, packet_size, interface, bind_ip)
     except Exception as e:
-        print(f"Error pinging host {host}: {e}")
+        log(f"Error pinging host {host}: {e}")
         return None
 
 
@@ -8528,7 +8438,7 @@ def traceroute_host(host: str, max_hops: int = 30, timeout: float = 5.0) -> Opti
     try:
         return _cs_client.traceroute_host(host, max_hops, timeout)
     except Exception as e:
-        print(f"Error performing traceroute to {host}: {e}")
+        log(f"Error performing traceroute to {host}: {e}")
         return None
 
 
@@ -8552,7 +8462,7 @@ def speed_test(host: str = "", interface: str = "", duration: int = 5,
     try:
         return _cs_client.speed_test(host, interface, duration, packet_size, port, protocol, direction)
     except Exception as e:
-        print(f"Error performing speed test: {e}")
+        log(f"Error performing speed test: {e}")
         return None
 
 
@@ -8583,7 +8493,7 @@ def start_packet_capture(interface: str = "any", filter: str = "",
     try:
         return _cs_client.start_packet_capture(interface, filter, count, timeout, wifichannel, wifichannelwidth, wifiextrachannel, url)
     except Exception as e:
-        print(f"Error starting packet capture: {e}")
+        log(f"Error starting packet capture: {e}")
         return None
 
 
@@ -8599,7 +8509,7 @@ def stop_packet_capture() -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.stop_packet_capture()
     except Exception as e:
-        print(f"Error stopping packet capture: {e}")
+        log(f"Error stopping packet capture: {e}")
         return None
 
 
@@ -8612,7 +8522,7 @@ def get_available_interfaces() -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.get_available_interfaces()
     except Exception as e:
-        print(f"Error getting available interfaces: {e}")
+        log(f"Error getting available interfaces: {e}")
         return None
 
 
@@ -8630,7 +8540,7 @@ def download_packet_capture(filename: str, local_path: str = None, capture_param
     try:
         return _cs_client.download_packet_capture(filename, local_path, capture_params)
     except Exception as e:
-        print(f"Error downloading packet capture: {e}")
+        log(f"Error downloading packet capture: {e}")
         return None
 
 
@@ -8655,7 +8565,7 @@ def start_streaming_capture(interface: str = "any", filter: str = "",
     try:
         return _cs_client.start_streaming_capture(interface, filter, wifichannel, wifichannelwidth, wifiextrachannel, url)
     except Exception as e:
-        print(f"Error starting streaming capture: {e}")
+        log(f"Error starting streaming capture: {e}")
         return None
 
 
@@ -8668,7 +8578,7 @@ def get_packet_capture_status() -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.get_packet_capture_status()
     except Exception as e:
-        print(f"Error getting packet capture status: {e}")
+        log(f"Error getting packet capture status: {e}")
         return None
 
 
@@ -8685,7 +8595,7 @@ def dns_lookup(hostname: str, record_type: str = "A") -> Optional[Dict[str, Any]
     try:
         return _cs_client.dns_lookup(hostname, record_type)
     except Exception as e:
-        print(f"Error performing DNS lookup for {hostname}: {e}")
+        log(f"Error performing DNS lookup for {hostname}: {e}")
         return None
 
 
@@ -8698,7 +8608,7 @@ def clear_dns_cache() -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.clear_dns_cache()
     except Exception as e:
-        print(f"Error clearing DNS cache: {e}")
+        log(f"Error clearing DNS cache: {e}")
         return None
 
 
@@ -8717,7 +8627,7 @@ def network_connectivity_test(host: str = "8.8.8.8", port: int = 53,
     try:
         return _cs_client.network_connectivity_test(host, port, timeout)
     except Exception as e:
-        print(f"Error testing connectivity to {host}:{port}: {e}")
+        log(f"Error testing connectivity to {host}:{port}: {e}")
         return None
 
 
@@ -8725,12 +8635,12 @@ def stop_ping() -> Optional[Dict[str, Any]]:
     """Stop any running ping process.
     
     Returns:
-        dict: Stop result
+        Optional[Dict[str, Any]]: API response from ping stop command
     """
     try:
         return _cs_client.stop_ping()
     except Exception as e:
-        print(f"Error stopping ping: {e}")
+        log(f"Error stopping ping: {e}")
         return None
 
 
@@ -8754,7 +8664,7 @@ def speed_test(host: str = "", interface: str = "", duration: int = 5,
     try:
         return _cs_client.speed_test(host, interface, duration, packet_size, port, protocol, direction)
     except Exception as e:
-        print(f"Error performing speed test: {e}")
+        log(f"Error performing speed test: {e}")
         return None
 
 
@@ -8762,12 +8672,12 @@ def stop_speed_test() -> Optional[Dict[str, Any]]:
     """Stop any running speed test.
     
     Returns:
-        dict: Stop result
+        Optional[Dict[str, Any]]: API response from speed test stop command
     """
     try:
         return _cs_client.stop_speed_test()
     except Exception as e:
-        print(f"Error stopping speed test: {e}")
+        log(f"Error stopping speed test: {e}")
         return None
 
 
@@ -8788,7 +8698,7 @@ def start_file_server(folder_path: str = "files", port: int = 8000,
     try:
         return _cs_client.start_file_server(folder_path, port, host, title)
     except Exception as e:
-        print(f"Error starting file server: {e}")
+        log(f"Error starting file server: {e}")
         return None
 
 
@@ -8806,7 +8716,7 @@ def create_user(username: str, password: str, group: str = "admin") -> Optional[
     try:
         return _cs_client.create_user(username, password, group)
     except Exception as e:
-        print(f"Error creating user: {e}")
+        log(f"Error creating user: {e}")
         return None
 
 
@@ -8819,7 +8729,7 @@ def get_users() -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.get_users()
     except Exception as e:
-        print(f"Error getting users: {e}")
+        log(f"Error getting users: {e}")
         return None
 
 
@@ -8835,7 +8745,7 @@ def delete_user(username: str) -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.delete_user(username)
     except Exception as e:
-        print(f"Error deleting user: {e}")
+        log(f"Error deleting user: {e}")
         return None
 
 
@@ -8853,7 +8763,7 @@ def ensure_user_exists(username: str, password: str, group: str = "admin") -> Op
     try:
         return _cs_client.ensure_user_exists(username, password, group)
     except Exception as e:
-        print(f"Error ensuring user exists: {e}")
+        log(f"Error ensuring user exists: {e}")
         return None
 
 
@@ -8870,7 +8780,7 @@ def ensure_fresh_user(username: str, group: str = "admin") -> Optional[Dict[str,
     try:
         return _cs_client.ensure_fresh_user(username, group)
     except Exception as e:
-        print(f"Error ensuring fresh user exists: {e}")
+        log(f"Error ensuring fresh user exists: {e}")
         return None
 
 
@@ -8909,7 +8819,7 @@ def packet_capture(iface: str = None,
             capture_user=capture_user
         )
     except Exception as e:
-        print(f"Error in packet capture: {e}")
+        log(f"Error in packet capture: {e}")
         return None
 
 
@@ -8936,7 +8846,7 @@ def monitor_log(pattern: str = None,
     Example:
         # Simple monitoring with callback
         def log_handler(line):
-            print(f"Log line: {line}")
+            log(f"Log line: {line}")
         
         result = cp.monitor_log(pattern="ERROR", callback=log_handler)
         
@@ -8959,7 +8869,7 @@ def monitor_log(pattern: str = None,
             timeout=timeout
         )
     except Exception as e:
-        print(f"Error in monitor_log: {e}")
+        log(f"Error in monitor_log: {e}")
         return None
 
 
@@ -8980,7 +8890,7 @@ def stop_monitor_log(monitor_result: Dict[str, Any]) -> Optional[Dict[str, Any]]
     try:
         return _cs_client.stop_monitor_log(monitor_result)
     except Exception as e:
-        print(f"Error stopping monitor_log: {e}")
+        log(f"Error stopping monitor_log: {e}")
         return None
 
 
@@ -9007,7 +8917,7 @@ def execute_cli(commands: Union[str, List[str]],
         # Single command
         output = cp.execute_cli("show version")
         if output:
-            print(output)
+            cp.log(output)
         
         # Multiple commands
         output = cp.execute_cli(["show version", "show interfaces"])
@@ -9026,7 +8936,7 @@ def execute_cli(commands: Union[str, List[str]],
             clean=clean
         )
     except Exception as e:
-        print(f"Error executing CLI commands: {e}")
+        log(f"Error executing CLI commands: {e}")
         return None
 
 
@@ -9047,11 +8957,11 @@ def monitor_sms(callback: callable,
         
     Example:
         def sms_handler(phone_number, message, raw_line):
-            print(f"SMS from {phone_number}: {message}")
+            cp.log(f"SMS from {phone_number}: {message}")
             # Auto-reply
             output = cp.execute_cli(f'sms {phone_number} Thanks for your message!')
             if output:
-                print(f"Auto-reply sent to {phone_number}")
+                cp.log(f"Auto-reply sent to {phone_number}")
         
         result = cp.monitor_sms(callback=sms_handler)
         
@@ -9061,7 +8971,7 @@ def monitor_sms(callback: callable,
     try:
         return _cs_client.monitor_sms(callback=callback, timeout=timeout)
     except Exception as e:
-        print(f"Error in monitor_sms: {e}")
+        log(f"Error in monitor_sms: {e}")
         return None
 
 
@@ -9082,7 +8992,7 @@ def stop_monitor_sms(monitor_result: Dict[str, Any]) -> Optional[Dict[str, Any]]
     try:
         return _cs_client.stop_monitor_sms(monitor_result)
     except Exception as e:
-        print(f"Error stopping monitor_sms: {e}")
+        log(f"Error stopping monitor_sms: {e}")
         return None
 
 
@@ -9106,7 +9016,7 @@ def send_sms(phone_number: str = None,
         # Send SMS with auto-detected port
         output = cp.send_sms(phone_number="+1234567890", message="Hello from the router!")
         if output:
-            print("SMS sent successfully")
+            cp.log("SMS sent successfully")
         
         # Send SMS with specific port
         output = cp.send_sms(phone_number="+1234567890", message="Hello!", port="ttyUSB0")
@@ -9116,7 +9026,7 @@ def send_sms(phone_number: str = None,
             response = f"Thanks for your message: {message}"
             output = cp.send_sms(phone_number=phone_number, message=response)
             if output:
-                print(f"Auto-reply sent to {phone_number}")
+                cp.log(f"Auto-reply sent to {phone_number}")
     """
     try:
         return _cs_client.send_sms(
@@ -9125,44 +9035,44 @@ def send_sms(phone_number: str = None,
             port=port
         )
     except Exception as e:
-        print(f"Error sending SMS: {e}")
+        log(f"Error sending SMS: {e}")
         return None
 
 
-def get_ncm_router_id() -> Optional[Dict[str, Any]]:
+def get_ncm_router_id() -> Optional[str]:
     """Get the router's NCM router ID (ECM client ID).
     
     Returns:
-        int: Router ID
+        Optional[str]: Router ID string
     """
     try:
         return _cs_client.get_ncm_router_id()
     except Exception as e:
-        print(f"Error getting NCM router ID: {e}")
+        log(f"Error getting NCM router ID: {e}")
         return None
 
 
-def get_ncm_group_name() -> Optional[Dict[str, Any]]:
+def get_ncm_group_name() -> Optional[str]:
     """Get the router's NCM group name.
 
     Returns:
-        str: Group name
+        Optional[str]: Group name string
     """
     try:
         return _cs_client.get_ncm_group_name()
     except Exception as e:
-        print(f"Error getting NCM group name: {e}")
+        log(f"Error getting NCM group name: {e}")
         return None
 
 
-def get_ncm_account_name() -> Optional[Dict[str, Any]]:
+def get_ncm_account_name() -> Optional[str]:
     """Get the router's NCM account name.
 
     Returns:
-        str: Account name
+        Optional[str]: Account name string
     """
     try:
         return _cs_client.get_ncm_account_name()
     except Exception as e:
-        print(f"Error getting NCM account name: {e}")
+        log(f"Error getting NCM account name: {e}")
         return None
