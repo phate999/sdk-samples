@@ -122,18 +122,23 @@ class CSClient(object):
             enable_logging (bool): Whether to enable logging. Defaults to False.
             ncos (bool): Whether running on NCOS. Defaults to False.
         """
-        if not init:
-            return
-        
+        # Always set basic attributes to prevent AttributeError
         self.app_name = app_name
         self.enable_logging = enable_logging
         self.ncos = ncos
-
+        
         # Cache device access credentials to avoid reading config file on every API call
         self._cached_device_ip = None
         self._cached_username = None
         self._cached_password = None
         self._cached_auth = None
+        
+        # Initialize logger
+        self.logger = None
+        
+        # Only perform full initialization if requested
+        if not init:
+            return
 
         if self.ncos and self.enable_logging: 
             handlers = [logging.StreamHandler()]
@@ -142,8 +147,6 @@ class CSClient(object):
             logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(name)s: %(message)s', datefmt='%b %d %H:%M:%S',
                             handlers=handlers)
             self.logger = logging.getLogger(app_name)
-        else:
-            self.logger = None
         
         # Disable urllib3 connection pool logging to reduce noise
         logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
@@ -4613,7 +4616,7 @@ def get_uptime() -> int:
         uptime = int(_cs_client.get('status/system/uptime'))
         return uptime
     except Exception as e:
-        _cs_client.log(f"Error getting uptime: {e}")
+        log(f"Error getting uptime: {e}")
         return 0
 
 def wait_for_uptime(min_uptime_seconds: int = 60) -> None:
@@ -4634,7 +4637,7 @@ def wait_for_uptime(min_uptime_seconds: int = 60) -> None:
         else:
             _cs_client.log(f"Router uptime is sufficient: {current_uptime} seconds.")
     except Exception as e:
-        _cs_client.logger.exception(f"Error validating uptime: {e}")
+        log(f"Error validating uptime: {e}")
 
 def wait_for_ntp(timeout: int = 300, check_interval: int = 1) -> bool:
     """Wait until NTP sync age is not null, indicating NTP synchronization.
@@ -4661,7 +4664,7 @@ def wait_for_ntp(timeout: int = 300, check_interval: int = 1) -> bool:
         _cs_client.log(f'NTP sync timeout after {timeout} seconds')
         return False
     except Exception as e:
-        _cs_client.log(f"Error waiting for NTP sync: {e}")
+        log("Error waiting for NTP sync: {e}")
         return False
 
 def wait_for_wan_connection(timeout: int = 300) -> bool:
@@ -4692,7 +4695,7 @@ def wait_for_wan_connection(timeout: int = 300) -> bool:
         _cs_client.log(f"Timeout waiting for WAN connection after {timeout} seconds.")
         return False
     except Exception as e:
-        _cs_client.log(f"Error waiting for WAN connection: {e}")
+        log("Error waiting for WAN connection: {e}")
         return False
 
 def get_appdata(name: str = '') -> Union[Optional[str], Optional[List[Dict[str, Any]]]]:
@@ -4711,7 +4714,7 @@ def get_appdata(name: str = '') -> Union[Optional[str], Optional[List[Dict[str, 
             return appdata
         return next((x["value"] for x in appdata if x["name"] == name), None)
     except Exception as e:
-        _cs_client.log(f"Error getting appdata for {name}: {e}")
+        log("Error getting appdata for {name}: {e}")
         return None
 
 def post_appdata(name: str = '', value: str = '') -> None:
@@ -4724,7 +4727,7 @@ def post_appdata(name: str = '', value: str = '') -> None:
     try:
         _cs_client.post('config/system/sdk/appdata', {"name": name, "value": value})
     except Exception as e:
-        _cs_client.log(f"Error posting appdata for {name}: {e}")
+        log("Error posting appdata for {name}: {e}")
 
 def put_appdata(name: str = '', value: str = '') -> None:
     """Set value of appdata in NCOS Config by name.
@@ -4741,7 +4744,7 @@ def put_appdata(name: str = '', value: str = '') -> None:
                 return
         _cs_client.post('config/system/sdk/appdata', {"name": name, "value": value})
     except Exception as e:
-        _cs_client.log(f"Error putting appdata for {name}: {e}")
+        log("Error putting appdata for {name}: {e}")
 
 def delete_appdata(name: str = '') -> None:
     """Delete appdata in NCOS Config by name.
@@ -4755,7 +4758,7 @@ def delete_appdata(name: str = '') -> None:
             if item["name"] == name:
                 _cs_client.delete(f'config/system/sdk/appdata/{item["_id_"]}')
     except Exception as e:
-        _cs_client.log(f"Error deleting appdata for {name}: {e}")
+        log("Error deleting appdata for {name}: {e}")
 
 def get_ncm_api_keys() -> Dict[str, Optional[str]]:
     """Get NCM API keys from the router's certificate management configuration.
@@ -4765,8 +4768,6 @@ def get_ncm_api_keys() -> Dict[str, Optional[str]]:
             Keys include: 'X-ECM-API-ID', 'X-ECM-API-KEY', 'X-CP-API-ID',
             'X-CP-API-KEY', 'Bearer Token'.
     
-    Raises:
-        Exception: If there is an error retrieving the API keys.
     """
     try:
         certs = _cs_client.get('config/certmgmt/certs')
@@ -4788,13 +4789,13 @@ def get_ncm_api_keys() -> Dict[str, Optional[str]]:
         # Log warning for any missing keys
         missing = [k for k, v in api_keys.items() if v is None]
         if missing:
-            _cs_client.logger.warning(f"Missing API keys: {', '.join(missing)}")
+            _cs_client.log(f"Missing API keys: {', '.join(missing)}")
 
         return api_keys
         
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving NCM API keys: {e}")
-        raise
+        log("Error retrieving NCM API keys: {e}")
+        return None
 
 def extract_cert_and_key(cert_name_or_uuid: str = '') -> Tuple[Optional[str], Optional[str]]:
     """Extract and save the certificate and key to the local filesystem.
@@ -4856,7 +4857,7 @@ def extract_cert_and_key(cert_name_or_uuid: str = '') -> Tuple[Optional[str], Op
             _cs_client.log(f'Missing x509 certificate for "{cert_name_or_uuid}"')
             return None, None
     except Exception as e:
-        _cs_client.log(f"Error extracting certificate and key for {cert_name_or_uuid}: {e}")
+        log("Error extracting certificate and key for {cert_name_or_uuid}: {e}")
         return None, None
 
 def get_ipv4_wired_clients() -> List[Dict[str, Any]]:
@@ -4895,7 +4896,7 @@ def get_ipv4_wired_clients() -> List[Dict[str, Any]]:
             })
         return wired_clients
     except Exception as e:
-        _cs_client.log(f"Error getting IPv4 wired clients: {e}")
+        log("Error getting IPv4 wired clients: {e}")
         return []
 
 def get_ipv4_wifi_clients() -> List[Dict[str, Any]]:
@@ -4958,7 +4959,7 @@ def get_ipv4_wifi_clients() -> List[Dict[str, Any]]:
             })
         return wifi_clients
     except Exception as e:
-        _cs_client.log(f"Error getting IPv4 WiFi clients: {e}")
+        log("Error getting IPv4 WiFi clients: {e}")
         return []
 
 def get_ipv4_lan_clients() -> Dict[str, List[Dict[str, Any]]]:
@@ -4981,7 +4982,7 @@ def get_ipv4_lan_clients() -> Dict[str, List[Dict[str, Any]]]:
 
         return lan_clients
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving clients: {e}")
+        log("Error retrieving clients: {e}")
         return {"wired_clients": [], "wifi_clients": []}
 
 def dec(deg: float, min: float = 0.0, sec: float = 0.0) -> float:
@@ -5002,7 +5003,7 @@ def dec(deg: float, min: float = 0.0, sec: float = 0.0) -> float:
             dec_val = deg + (min / 60) + (sec / 3600)
         return round(dec_val, 6)
     except Exception as e:
-        _cs_client.log(f"Error converting coordinates to decimal: {e}")
+        log("Error converting coordinates to decimal: {e}")
         return 0.0
 
 def get_lat_long(max_retries: int = 5, retry_delay: float = 0.1) -> Tuple[Optional[float], Optional[float]]:
@@ -5042,7 +5043,7 @@ def get_lat_long(max_retries: int = 5, retry_delay: float = 0.1) -> Tuple[Option
         except:
             return None, None
     except Exception as e:
-        _cs_client.log(f"Error getting latitude and longitude: {e}")
+        log("Error getting latitude and longitude: {e}")
         return None, None
 
 def get_connected_wans(max_retries: int = 10) -> List[str]:
@@ -5068,7 +5069,7 @@ def get_connected_wans(max_retries: int = 10) -> List[str]:
             _cs_client.log('No WANs connected!')
         return wans
     except Exception as e:
-        _cs_client.log(f"Error getting connected WANs: {e}")
+        log("Error getting connected WANs: {e}")
         return []
 
 def get_sims(max_retries: int = 10) -> List[str]:
@@ -5098,7 +5099,7 @@ def get_sims(max_retries: int = 10) -> List[str]:
                 SIMs.append(uid)
         return SIMs
     except Exception as e:
-        _cs_client.log(f"Error getting SIMs: {e}")
+        log("Error getting SIMs: {e}")
         return []
 
 def get_mac(format_with_colons: bool = False) -> Optional[str]:
@@ -5116,7 +5117,7 @@ def get_mac(format_with_colons: bool = False) -> Optional[str]:
             return None
         return mac if format_with_colons else mac.replace(':', '')
     except Exception as e:
-        _cs_client.log(f"Error getting device MAC: {e}")
+        log("Error getting device MAC: {e}")
         return None
 
 def get_serial_number() -> Optional[str]:
@@ -5128,7 +5129,7 @@ def get_serial_number() -> Optional[str]:
     try:
         return _cs_client.get('status/product_info/manufacturing/serial_num')
     except Exception as e:
-        _cs_client.log(f"Error getting device serial number: {e}")
+        log("Error getting device serial number: {e}")
         return None
 
 def get_product_type() -> Optional[str]:
@@ -5140,7 +5141,7 @@ def get_product_type() -> Optional[str]:
     try:
         return _cs_client.get('status/product_info/product_name')
     except Exception as e:
-        _cs_client.log(f"Error getting device product type: {e}")
+        log("Error getting device product type: {e}")
         return None
 
 def get_name() -> Optional[str]:
@@ -5152,7 +5153,7 @@ def get_name() -> Optional[str]:
     try:
         return _cs_client.get('config/system/system_id')
     except Exception as e:
-        _cs_client.log(f"Error getting device name: {e}")
+        log("Error getting device name: {e}")
         return None
 
 def get_firmware_version(include_build_info: bool = False) -> str:
@@ -5175,7 +5176,7 @@ def get_firmware_version(include_build_info: bool = False) -> str:
         
         return firmware
     except Exception as e:
-        _cs_client.log(f"Error getting device firmware: {e}")
+        log("Error getting device firmware: {e}")
         return "Unknown"
 
 # ============================================================================
@@ -5250,7 +5251,7 @@ def get_router_model() -> Optional[str]:
             return model
         return None
     except Exception as e:
-        _cs_client.log(f"Error getting router model: {e}")
+        log("Error getting router model: {e}")
         return None
 
 
@@ -5328,7 +5329,7 @@ def get_all_gpios(router_model: Optional[str] = None) -> Dict[str, Any]:
         response = _cs_client.get('/status/gpio')
         return response if isinstance(response, dict) else {}
     except Exception as e:
-        _cs_client.log(f"Error getting raw GPIOs from /status/gpio: {e}")
+        log("Error getting raw GPIOs from /status/gpio: {e}")
         return {}
 
 
@@ -5352,7 +5353,7 @@ def get_available_gpios(router_model: Optional[str] = None) -> List[str]:
         
         return list(GPIO_MAP[router_model].keys())
     except Exception as e:
-        _cs_client.log(f"Error getting available GPIOs: {e}")
+        log("Error getting available GPIOs: {e}")
         return []
 
 
@@ -5371,7 +5372,7 @@ def get_ncm_status(include_details: bool = False) -> Optional[str]:
     try:
         return _cs_client.get('status/ecm/state')
     except Exception as e:
-        _cs_client.log(f"Error getting NCM status: {e}")
+        log("Error getting NCM status: {e}")
         return None
 
 def reboot_device(force: bool = False) -> None:
@@ -5383,7 +5384,7 @@ def reboot_device(force: bool = False) -> None:
     try:
         _cs_client.put('control/system/reboot', 'reboot hypmgr')
     except Exception as e:
-        _cs_client.log(f"Error rebooting device: {e}")
+        log("Error rebooting device: {e}")
     
 # Direct access to the underlying EventingCSClient methods
 def get(base: str, query: str = '', tree: int = 0) -> Optional[Dict[str, Any]]:
@@ -5400,7 +5401,7 @@ def get(base: str, query: str = '', tree: int = 0) -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.get(base, query, tree)
     except Exception as e:
-        _cs_client.log(f"Error in get request for {base}: {e}")
+        log("Error in get request for {base}: {e}")
         return None
 
 def post(base: str, value: Any = '', query: str = '') -> Optional[Dict[str, Any]]:
@@ -5417,7 +5418,7 @@ def post(base: str, value: Any = '', query: str = '') -> Optional[Dict[str, Any]
     try:
         return _cs_client.post(base, value, query)
     except Exception as e:
-        _cs_client.log(f"Error in post request for {base}: {e}")
+        log("Error in post request for {base}: {e}")
         return None
 
 def put(base: str, value: Any = '', query: str = '', tree: int = 0) -> Optional[Dict[str, Any]]:
@@ -5435,7 +5436,7 @@ def put(base: str, value: Any = '', query: str = '', tree: int = 0) -> Optional[
     try:
         return _cs_client.put(base, value, query, tree)
     except Exception as e:
-        _cs_client.log(f"Error in put request for {base}: {e}")
+        log("Error in put request for {base}: {e}")
         return None
 
 def delete(base: str, query: str = '') -> Optional[Dict[str, Any]]:
@@ -5451,7 +5452,7 @@ def delete(base: str, query: str = '') -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.delete(base, query)
     except Exception as e:
-        _cs_client.log(f"Error in delete request for {base}: {e}")
+        log("Error in delete request for {base}: {e}")
         return None
 
 def decrypt(base: str, query: str = '', tree: int = 0) -> Optional[Dict[str, Any]]:
@@ -5468,7 +5469,7 @@ def decrypt(base: str, query: str = '', tree: int = 0) -> Optional[Dict[str, Any
     try:
         return _cs_client.decrypt(base, query, tree)
     except Exception as e:
-        _cs_client.log(f"Error in decrypt request for {base}: {e}")
+        log("Error in decrypt request for {base}: {e}")
         return None
 
 def log(value: str = '') -> None:
@@ -5503,7 +5504,7 @@ def alert(value: str = '') -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.alert(value)
     except Exception as e:
-        _cs_client.log(f"Error in alert request: {e}")
+        log("Error in alert request: {e}")
         return None
 
 def register(action: str = 'set', path: str = '', callback: Callable = None, *args: Any) -> Dict[str, Any]:
@@ -5521,7 +5522,7 @@ def register(action: str = 'set', path: str = '', callback: Callable = None, *ar
     try:
         return _cs_client.register(action, path, callback, *args)
     except Exception as e:
-        _cs_client.log(f"Error in register request for {path}: {e}")
+        log("Error in register request for {path}: {e}")
         return {}
 
 # Alias for register function
@@ -5539,7 +5540,7 @@ def unregister(eid: int = 0) -> Dict[str, Any]:
     try:
         return _cs_client.unregister(eid)
     except Exception as e:
-        _cs_client.log(f"Error in unregister request for eid {eid}: {e}")
+        log("Error in unregister request for eid {eid}: {e}")
         return {}
 
 # Expose the logger for advanced logging control
@@ -6084,7 +6085,7 @@ def get_wan_devices_status() -> Optional[Dict[str, Any]]:
         wan_devices = _cs_client.get('status/wan/devices')
         return wan_devices
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WAN devices status: {e}")
+        log("Error retrieving WAN devices status: {e}")
         return None
 
 
@@ -6195,7 +6196,7 @@ def get_signal_strength(uid: str, include_backlog: bool = False) -> Optional[Dic
 
         return signal_info
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving signal strength: {e}")
+        log("Error retrieving signal strength: {e}")
         return None
 
 def get_temperature(unit: str = 'fahrenheit') -> Optional[float]:
@@ -6218,7 +6219,7 @@ def get_temperature(unit: str = 'fahrenheit') -> Optional[float]:
             return (temp * 9/5) + 32
         return temp
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving temperature: {e}")
+        log("Error retrieving temperature: {e}")
         return None
 
 def get_power_usage(include_components: bool = True) -> Optional[Dict[str, Any]]:
@@ -6266,7 +6267,7 @@ def get_power_usage(include_components: bool = True) -> Optional[Dict[str, Any]]
         
         return power_components
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving power usage: {e}")
+        log("Error retrieving power usage: {e}")
         return None
 
 def get_wlan_status() -> Optional[Dict[str, Any]]:
@@ -6280,7 +6281,7 @@ def get_wlan_status() -> Optional[Dict[str, Any]]:
         wlan_status = _cs_client.get('status/wlan')
         return wlan_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN status: {e}")
+        log("Error retrieving WLAN status: {e}")
         return None
 
 def get_wlan_clients() -> List[Dict[str, Any]]:
@@ -6303,7 +6304,7 @@ def get_wlan_clients() -> List[Dict[str, Any]]:
     try:
         return _cs_client.get('status/wlan/clients')
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN clients: {e}")
+        log("Error retrieving WLAN clients: {e}")
         return []
 
 def get_wlan_radio_status() -> List[Dict[str, Any]]:
@@ -6326,7 +6327,7 @@ def get_wlan_radio_status() -> List[Dict[str, Any]]:
     try:
         return _cs_client.get('status/wlan/radio')
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN radio status: {e}")
+        log("Error retrieving WLAN radio status: {e}")
         return []
 
 def get_wlan_radio_by_band(band: str = '2.4 GHz') -> Optional[Dict[str, Any]]:
@@ -6345,7 +6346,7 @@ def get_wlan_radio_by_band(band: str = '2.4 GHz') -> Optional[Dict[str, Any]]:
                 return radio
         return None
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN radio for band {band}: {e}")
+        log("Error retrieving WLAN radio for band {band}: {e}")
         return None
 
 def get_wlan_events() -> Dict[str, Any]:
@@ -6364,7 +6365,7 @@ def get_wlan_events() -> Dict[str, Any]:
         wlan_status = _cs_client.get('status/wlan')
         return wlan_status.get('events', {}) if wlan_status else {}
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN events: {e}")
+        log("Error retrieving WLAN events: {e}")
         return {}
 
 def get_wlan_region_config() -> Dict[str, Any]:
@@ -6385,7 +6386,7 @@ def get_wlan_region_config() -> Dict[str, Any]:
         wlan_status = _cs_client.get('status/wlan')
         return wlan_status.get('region', {}) if wlan_status else {}
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN region config: {e}")
+        log("Error retrieving WLAN region config: {e}")
         return {}
 
 def get_wlan_remote_status() -> Dict[str, Any]:
@@ -6399,7 +6400,7 @@ def get_wlan_remote_status() -> Dict[str, Any]:
         wlan_status = _cs_client.get('status/wlan')
         return wlan_status.get('remote', {}) if wlan_status else {}
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN remote status: {e}")
+        log("Error retrieving WLAN remote status: {e}")
         return {}
 
 def get_wlan_state() -> str:
@@ -6412,7 +6413,7 @@ def get_wlan_state() -> str:
         wlan_status = _cs_client.get('status/wlan')
         return wlan_status.get('state', 'Unknown') if wlan_status else 'Unknown'
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN state: {e}")
+        log("Error retrieving WLAN state: {e}")
         return 'Unknown'
 
 def get_wlan_trace() -> List[Dict[str, Any]]:
@@ -6429,7 +6430,7 @@ def get_wlan_trace() -> List[Dict[str, Any]]:
         wlan_status = _cs_client.get('status/wlan')
         return wlan_status.get('trace', []) if wlan_status else []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN trace: {e}")
+        log("Error retrieving WLAN trace: {e}")
         return []
 
 def get_wlan_debug() -> Dict[str, Any]:
@@ -6443,7 +6444,7 @@ def get_wlan_debug() -> Dict[str, Any]:
         wlan_status = _cs_client.get('status/wlan')
         return wlan_status.get('debug', {}) if wlan_status else {}
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN debug: {e}")
+        log("Error retrieving WLAN debug: {e}")
         return {}
 
 def get_wlan_channel_info(band: Optional[str] = None, include_survey: bool = False) -> Dict[str, Any]:
@@ -6495,7 +6496,7 @@ def get_wlan_channel_info(band: Optional[str] = None, include_survey: bool = Fal
                     channel_info[band_name]['survey_data'] = radio.get('survey', [])
             return channel_info
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN channel info: {e}")
+        log("Error retrieving WLAN channel info: {e}")
         return {}
 
 def get_wlan_client_count() -> int:
@@ -6508,7 +6509,7 @@ def get_wlan_client_count() -> int:
         clients = get_wlan_clients()
         return len(clients)
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN client count: {e}")
+        log("Error retrieving WLAN client count: {e}")
         return 0
 
 def get_wlan_client_count_by_band() -> Dict[str, int]:
@@ -6526,7 +6527,7 @@ def get_wlan_client_count_by_band() -> Dict[str, int]:
             client_counts[band_name] = len(clients)
         return client_counts
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WLAN client count by band: {e}")
+        log("Error retrieving WLAN client count by band: {e}")
         return {}
 
 def get_dhcp_leases() -> Optional[List[Dict[str, Any]]]:
@@ -6545,7 +6546,7 @@ def get_dhcp_leases() -> Optional[List[Dict[str, Any]]]:
         leases = _cs_client.get('status/dhcpd/leases')
         return leases
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving DHCP leases: {e}")
+        log("Error retrieving DHCP leases: {e}")
         return None
 
 def get_routing_table() -> Optional[Dict[str, Any]]:
@@ -6562,7 +6563,7 @@ def get_routing_table() -> Optional[Dict[str, Any]]:
         routes = _cs_client.get('status/routing')
         return routes
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving routing table: {e}")
+        log("Error retrieving routing table: {e}")
         return None
 
 def get_certificate_status() -> Optional[Dict[str, Any]]:
@@ -6579,7 +6580,7 @@ def get_certificate_status() -> Optional[Dict[str, Any]]:
         cert_status = _cs_client.get('status/certmgmt')
         return cert_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving certificate status: {e}")
+        log("Error retrieving certificate status: {e}")
         return None
 
 def get_storage_status(include_detailed: bool = False) -> Optional[Dict[str, Any]]:
@@ -6611,7 +6612,7 @@ def get_storage_status(include_detailed: bool = False) -> Optional[Dict[str, Any
         
         return storage_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving storage status: {e}")
+        log("Error retrieving storage status: {e}")
         return None
 
 def get_usb_status(include_all_ports: bool = False) -> Optional[Dict[str, Any]]:
@@ -6643,7 +6644,7 @@ def get_usb_status(include_all_ports: bool = False) -> Optional[Dict[str, Any]]:
         
         return usb_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving USB status: {e}")
+        log("Error retrieving USB status: {e}")
         return None
 
 def get_poe_status() -> Optional[Dict[str, Any]]:
@@ -6660,7 +6661,7 @@ def get_poe_status() -> Optional[Dict[str, Any]]:
         poe_status = _cs_client.get('status/system/poe_pse')
         return poe_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving PoE status: {e}")
+        log("Error retrieving PoE status: {e}")
         return None
 
 def get_sensors_status() -> Optional[Dict[str, Any]]:
@@ -6678,7 +6679,7 @@ def get_sensors_status() -> Optional[Dict[str, Any]]:
         }
         return sensors_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving sensors status: {e}")
+        log("Error retrieving sensors status: {e}")
         return None
 
 def get_services_status() -> Optional[Dict[str, Any]]:
@@ -6694,7 +6695,7 @@ def get_services_status() -> Optional[Dict[str, Any]]:
         services_status = _cs_client.get('status/system/services')
         return services_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving services status: {e}")
+        log("Error retrieving services status: {e}")
         return None
 
 def get_apps_status() -> Optional[Dict[str, Any]]:
@@ -6735,7 +6736,7 @@ def get_apps_status() -> Optional[Dict[str, Any]]:
             'running_apps': running_apps
         }
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving apps status: {e}")
+        log("Error retrieving apps status: {e}")
         return None
 
 
@@ -6839,7 +6840,7 @@ def get_event_status() -> Optional[Dict[str, Any]]:
         event_status = _cs_client.get('status/event')
         return event_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving event status: {e}")
+        log("Error retrieving event status: {e}")
         return None
 
 
@@ -6881,7 +6882,7 @@ def get_flow_statistics() -> Optional[Dict[str, Any]]:
             "destinations": destinations
         }
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving flow statistics: {e}")
+        log("Error retrieving flow statistics: {e}")
         return None
 
 def get_client_usage() -> Optional[Dict[str, Any]]:
@@ -6937,7 +6938,7 @@ def get_client_usage() -> Optional[Dict[str, Any]]:
             "stats": stats
         }
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving client usage: {e}")
+        log("Error retrieving client usage: {e}")
         return None
 
 
@@ -6961,7 +6962,7 @@ def get_vpn_status() -> Optional[Dict[str, Any]]:
         }
         return vpn_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving VPN status: {e}")
+        log("Error retrieving VPN status: {e}")
         return None
 
 def get_security_status() -> Optional[Dict[str, Any]]:
@@ -6981,7 +6982,7 @@ def get_security_status() -> Optional[Dict[str, Any]]:
         }
         return security_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving security status: {e}")
+        log("Error retrieving security status: {e}")
         return None
 
 def get_iot_status() -> Optional[Dict[str, Any]]:
@@ -6997,7 +6998,7 @@ def get_iot_status() -> Optional[Dict[str, Any]]:
         iot_status = _cs_client.get('status/iot')
         return iot_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving IoT status: {e}")
+        log("Error retrieving IoT status: {e}")
         return None
 
 
@@ -7016,7 +7017,7 @@ def get_hotspot_status() -> Optional[Dict[str, Any]]:
         hotspot_status = _cs_client.get('status/hotspot')
         return hotspot_status
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving hotspot status: {e}")
+        log("Error retrieving hotspot status: {e}")
         return None
 
 def get_sdwan_status() -> Optional[Dict[str, Any]]:
@@ -7044,7 +7045,7 @@ def get_sdwan_status() -> Optional[Dict[str, Any]]:
             "wan_bonding": sdwan_status.get("wan_bonding", {})
         }
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving SD-WAN status: {e}")
+        log("Error retrieving SD-WAN status: {e}")
         return None
 
 # ============================================================================
@@ -7071,7 +7072,7 @@ def get_wan_profiles() -> Dict[str, Any]:
         wan_rules.sort(key=lambda x: x["priority"])
         return wan_rules
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving WAN profiles: {e}")
+        log("Error retrieving WAN profiles: {e}")
         return None
 
 def get_wan_device_profile(device_id: str) -> Optional[Dict[str, Any]]:
@@ -7096,7 +7097,7 @@ def get_wan_device_profile(device_id: str) -> Optional[Dict[str, Any]]:
         # Get the profile details
         return _cs_client.get(f'config/wan/rules2/{profile_id}')
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving device profile for {device_id}: {e}")
+        log("Error retrieving device profile for {device_id}: {e}")
         return None
 
 def set_wan_device_priority(device_id: str, new_priority: float) -> bool:
@@ -7121,7 +7122,7 @@ def set_wan_device_priority(device_id: str, new_priority: float) -> bool:
         result = _cs_client.put(f'config/wan/rules2/{profile_id}/priority', new_priority)
         return result is not None
     except Exception as e:
-        _cs_client.logger.exception(f"Error setting device priority for {device_id}: {e}")
+        log("Error setting device priority for {device_id}: {e}")
         return False
 
 def make_wan_device_highest_priority(device_id: str) -> bool:
@@ -7147,7 +7148,7 @@ def make_wan_device_highest_priority(device_id: str) -> bool:
         
         return set_wan_device_priority(device_id, new_priority)
     except Exception as e:
-        _cs_client.logger.exception(f"Error making device highest priority for {device_id}: {e}")
+        log("Error making device highest priority for {device_id}: {e}")
         return False
 
 def enable_wan_device(device_id: str) -> bool:
@@ -7170,7 +7171,7 @@ def enable_wan_device(device_id: str) -> bool:
         result = _cs_client.put(f'config/wan/rules2/{profile_id}/disabled', False)
         return result is not None
     except Exception as e:
-        _cs_client.logger.exception(f"Error enabling device {device_id}: {e}")
+        log("Error enabling device {device_id}: {e}")
         return False
 
 def disable_wan_device(device_id: str) -> bool:
@@ -7193,7 +7194,7 @@ def disable_wan_device(device_id: str) -> bool:
         result = _cs_client.put(f'config/wan/rules2/{profile_id}/disabled', True)
         return result is not None
     except Exception as e:
-        _cs_client.logger.exception(f"Error disabling device {device_id}: {e}")
+        log("Error disabling device {device_id}: {e}")
         return False
 
 def set_wan_device_default_connection_state(device_id: str, connection_state: str) -> bool:
@@ -7217,7 +7218,7 @@ def set_wan_device_default_connection_state(device_id: str, connection_state: st
         result = _cs_client.put(f'config/wan/rules2/{profile_id}/def_conn_state', connection_state)
         return result is not None
     except Exception as e:
-        _cs_client.logger.exception(f"Error setting connection state for {device_id}: {e}")
+        log("Error setting connection state for {device_id}: {e}")
         return False
 
 def set_wan_device_bandwidth(device_id: str, ingress_kbps: int = None, egress_kbps: int = None) -> bool:
@@ -7254,7 +7255,7 @@ def set_wan_device_bandwidth(device_id: str, ingress_kbps: int = None, egress_kb
         
         return success
     except Exception as e:
-        _cs_client.logger.exception(f"Error setting bandwidth for {device_id}: {e}")
+        log("Error setting bandwidth for {device_id}: {e}")
         return False
 
 def set_manual_apn(device_or_id: str, new_apn: str) -> Optional[Dict[str, Any]]:
@@ -7274,7 +7275,7 @@ def set_manual_apn(device_or_id: str, new_apn: str) -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.set_manual_apn(device_or_id, new_apn)
     except Exception as e:
-        _cs_client.logger.exception(f"Error setting manual APN for {device_or_id}: {e}")
+        log("Error setting manual APN for {device_or_id}: {e}")
         return None
 
 def remove_manual_apn(device_or_id: str) -> Optional[Dict[str, Any]]:
@@ -7292,7 +7293,7 @@ def remove_manual_apn(device_or_id: str) -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.remove_manual_apn(device_or_id)
     except Exception as e:
-        _cs_client.logger.exception(f"Error removing manual APN for {device_or_id}: {e}")
+        log("Error removing manual APN for {device_or_id}: {e}")
         return None
 
 def add_advanced_apn(carrier: str, apn: str) -> Optional[Dict[str, Any]]:
@@ -7311,7 +7312,7 @@ def add_advanced_apn(carrier: str, apn: str) -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.add_advanced_apn(carrier, apn)
     except Exception as e:
-        _cs_client.logger.exception(f"Error adding advanced APN for carrier {carrier} and APN {apn}: {e}")
+        log("Error adding advanced APN for carrier {carrier} and APN {apn}: {e}")
         return None
 
 def delete_advanced_apn(carrier_or_apn: str) -> Optional[Dict[str, Any]]:
@@ -7329,7 +7330,7 @@ def delete_advanced_apn(carrier_or_apn: str) -> Optional[Dict[str, Any]]:
     try:
         return _cs_client.delete_advanced_apn(carrier_or_apn)
     except Exception as e:
-        _cs_client.logger.exception(f"Error deleting advanced APN matching {carrier_or_apn}: {e}")
+        log("Error deleting advanced APN matching {carrier_or_apn}: {e}")
         return None
 
 def reorder_wan_profiles(device_priorities: Dict[str, float]) -> bool:
@@ -7353,7 +7354,7 @@ def reorder_wan_profiles(device_priorities: Dict[str, float]) -> bool:
         
         return success
     except Exception as e:
-        _cs_client.logger.exception(f"Error reordering WAN profiles: {e}")
+        log("Error reordering WAN profiles: {e}")
         return False
 
 def get_wan_profile_by_trigger_string(trigger_string: str) -> Optional[Dict[str, Any]]:
@@ -7376,7 +7377,7 @@ def get_wan_profile_by_trigger_string(trigger_string: str) -> Optional[Dict[str,
         
         return None
     except Exception as e:
-        _cs_client.logger.exception(f"Error finding profile by trigger string: {e}")
+        log("Error finding profile by trigger string: {e}")
         return None
 
 def get_wan_profile_by_name(profile_name: str) -> Optional[Dict[str, Any]]:
@@ -7399,7 +7400,7 @@ def get_wan_profile_by_name(profile_name: str) -> Optional[Dict[str, Any]]:
         
         return None
     except Exception as e:
-        _cs_client.logger.exception(f"Error finding profile by name: {e}")
+        log("Error finding profile by name: {e}")
         return None
 
 def get_wan_device_summary() -> Dict[str, Any]:
@@ -7459,7 +7460,7 @@ def get_wan_device_summary() -> Dict[str, Any]:
             "total_devices": len(devices_info)
         }
     except Exception as e:
-        _cs_client.logger.exception(f"Error getting WAN device summary: {e}")
+        log("Error getting WAN device summary: {e}")
         return None
 
 
@@ -7582,7 +7583,7 @@ def get_comprehensive_status(include_detailed: bool = True, include_clients: boo
             }
         return status_report
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving comprehensive status: {e}")
+        log("Error retrieving comprehensive status: {e}")
         return None
 
 def wait_for_modem_connection(timeout: int = 300, check_interval: float = 1.0) -> bool:
@@ -7614,7 +7615,7 @@ def wait_for_modem_connection(timeout: int = 300, check_interval: float = 1.0) -
         _cs_client.log(f"Timeout waiting for modem connection after {timeout} seconds.")
         return False
     except Exception as e:
-        _cs_client.log(f"Error waiting for modem connection: {e}")
+        log("Error waiting for modem connection: {e}")
         return False
 
 def wait_for_gps_fix(timeout: int = 300, check_interval: float = 1.0) -> bool:
@@ -7639,7 +7640,7 @@ def wait_for_gps_fix(timeout: int = 300, check_interval: float = 1.0) -> bool:
         _cs_client.log(f"Timeout waiting for GPS fix after {timeout} seconds.")
         return False
     except Exception as e:
-        _cs_client.log(f"Error waiting for GPS fix: {e}")
+        log("Error waiting for GPS fix: {e}")
         return False
 
 # ============================================================================
@@ -7666,7 +7667,7 @@ def reset_modem(modem_id: Optional[str] = None, force: bool = False) -> bool:
             _cs_client.log("Reset command sent to all modems")
         return True
     except Exception as e:
-        _cs_client.logger.exception(f"Error resetting modem: {e}")
+        log("Error resetting modem: {e}")
         return False
 
 def reset_wlan(force: bool = False) -> bool:
@@ -7683,7 +7684,7 @@ def reset_wlan(force: bool = False) -> bool:
         _cs_client.log("Reset command sent to WLAN")
         return True
     except Exception as e:
-        _cs_client.logger.exception(f"Error resetting WLAN: {e}")
+        log("Error resetting WLAN: {e}")
         return False
 
 def clear_logs() -> bool:
@@ -7697,7 +7698,7 @@ def clear_logs() -> bool:
         _cs_client.log("Logs cleared")
         return True
     except Exception as e:
-        _cs_client.logger.exception(f"Error clearing logs: {e}")
+        log("Error clearing logs: {e}")
         return False
 
 def factory_reset() -> bool:
@@ -7714,7 +7715,7 @@ def factory_reset() -> bool:
         _cs_client.log("Factory reset initiated")
         return True
     except Exception as e:
-        _cs_client.logger.exception(f"Error performing factory reset: {e}")
+        log("Error performing factory reset: {e}")
         return False
 
 def restart_service(service_name: str, force: bool = False) -> bool:
@@ -7732,7 +7733,7 @@ def restart_service(service_name: str, force: bool = False) -> bool:
         _cs_client.log(f"Service {service_name} restart initiated")
         return True
     except Exception as e:
-        _cs_client.logger.exception(f"Error restarting service {service_name}: {e}")
+        log("Error restarting service {service_name}: {e}")
         return False
 
 def set_log_level(level: str = 'info') -> bool:
@@ -7749,7 +7750,7 @@ def set_log_level(level: str = 'info') -> bool:
         _cs_client.log(f"Log level set to {level}")
         return True
     except Exception as e:
-        _cs_client.logger.exception(f"Error setting log level: {e}")
+        log("Error setting log level: {e}")
         return False
 
 # ============================================================================
@@ -7770,7 +7771,7 @@ def get_qos_queues() -> List[Dict[str, Any]]:
         qos_data = _cs_client.get('status/qos')
         return qos_data.get('queues', []) if qos_data else []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving QoS queues: {e}")
+        log("Error retrieving QoS queues: {e}")
         return []
 
 def get_qos_queue_by_name(queue_name: str = '') -> Optional[Dict[str, Any]]:
@@ -7791,7 +7792,7 @@ def get_qos_queue_by_name(queue_name: str = '') -> Optional[Dict[str, Any]]:
                     return queue
         return None
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving QoS queue {queue_name}: {e}")
+        log("Error retrieving QoS queue {queue_name}: {e}")
         return None
 
 def get_qos_traffic_stats() -> Dict[str, Any]:
@@ -7832,7 +7833,7 @@ def get_qos_traffic_stats() -> Dict[str, Any]:
         
         return total_stats
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving QoS traffic stats: {e}")
+        log("Error retrieving QoS traffic stats: {e}")
         return {}
 
 
@@ -7855,7 +7856,7 @@ def get_dhcp_clients_by_interface(interface_name: str = '') -> List[Dict[str, An
             return [lease for lease in leases if lease.get('iface') == interface_name]
         return []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving DHCP clients for interface {interface_name}: {e}")
+        log("Error retrieving DHCP clients for interface {interface_name}: {e}")
         return []
 
 def get_dhcp_clients_by_network(network_name: str = '') -> List[Dict[str, Any]]:
@@ -7873,7 +7874,7 @@ def get_dhcp_clients_by_network(network_name: str = '') -> List[Dict[str, Any]]:
             return [lease for lease in leases if lease.get('network') == network_name]
         return []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving DHCP clients for network {network_name}: {e}")
+        log("Error retrieving DHCP clients for network {network_name}: {e}")
         return []
 
 def get_dhcp_client_by_mac(mac_address: str = '') -> Optional[Dict[str, Any]]:
@@ -7893,7 +7894,7 @@ def get_dhcp_client_by_mac(mac_address: str = '') -> Optional[Dict[str, Any]]:
                     return lease
         return None
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving DHCP client for MAC {mac_address}: {e}")
+        log("Error retrieving DHCP client for MAC {mac_address}: {e}")
         return None
 
 def get_dhcp_client_by_ip(ip_address: str = '') -> Optional[Dict[str, Any]]:
@@ -7913,7 +7914,7 @@ def get_dhcp_client_by_ip(ip_address: str = '') -> Optional[Dict[str, Any]]:
                     return lease
         return None
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving DHCP client for IP {ip_address}: {e}")
+        log("Error retrieving DHCP client for IP {ip_address}: {e}")
         return None
 
 def get_dhcp_interface_summary() -> Dict[str, Any]:
@@ -7948,7 +7949,7 @@ def get_dhcp_interface_summary() -> Dict[str, Any]:
         
         return summary
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving DHCP interface summary: {e}")
+        log("Error retrieving DHCP interface summary: {e}")
         return {}
 
 
@@ -7970,7 +7971,7 @@ def get_bgp_status() -> Dict[str, Any]:
         routing_data = _cs_client.get('status/routing')
         return routing_data.get('bgp', {}) if routing_data else {}
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving BGP status: {e}")
+        log("Error retrieving BGP status: {e}")
         return {}
 
 def get_ospf_status() -> Dict[str, Any]:
@@ -7988,7 +7989,7 @@ def get_ospf_status() -> Dict[str, Any]:
         routing_data = _cs_client.get('status/routing')
         return routing_data.get('ospf', {}) if routing_data else {}
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving OSPF status: {e}")
+        log("Error retrieving OSPF status: {e}")
         return {}
 
 def get_static_routes() -> List[Dict[str, Any]]:
@@ -8007,7 +8008,7 @@ def get_static_routes() -> List[Dict[str, Any]]:
         routing_data = _cs_client.get('status/routing')
         return routing_data.get('static', []) if routing_data else []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving static routes: {e}")
+        log("Error retrieving static routes: {e}")
         return []
 
 def get_routing_policies() -> List[Dict[str, Any]]:
@@ -8027,7 +8028,7 @@ def get_routing_policies() -> List[Dict[str, Any]]:
         routing_data = _cs_client.get('status/routing')
         return routing_data.get('policy', []) if routing_data else []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving routing policies: {e}")
+        log("Error retrieving routing policies: {e}")
         return []
 
 def get_routing_table_by_name(table_name: str) -> List[Dict[str, Any]]:
@@ -8045,7 +8046,7 @@ def get_routing_table_by_name(table_name: str) -> List[Dict[str, Any]]:
             return routing_data['table'].get(table_name, [])
         return []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving routing table {table_name}: {e}")
+        log("Error retrieving routing table {table_name}: {e}")
         return []
 
 def get_arp_table() -> str:
@@ -8060,7 +8061,7 @@ def get_arp_table() -> str:
             return routing_data['cli'].get('arpdump', '')
         return ''
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving ARP table: {e}")
+        log("Error retrieving ARP table: {e}")
         return ''
 
 def get_route_summary() -> Dict[str, Any]:
@@ -8102,7 +8103,7 @@ def get_route_summary() -> Dict[str, Any]:
         
         return summary
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving route summary: {e}")
+        log("Error retrieving route summary: {e}")
         return {}
 
 
@@ -8126,7 +8127,7 @@ def get_certificates() -> List[Dict[str, Any]]:
         cert_data = _cs_client.get('status/certmgmt')
         return cert_data.get('view', []) if cert_data else []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving certificates: {e}")
+        log("Error retrieving certificates: {e}")
         return []
 
 def get_certificate_by_name(cert_name: str) -> Optional[Dict[str, Any]]:
@@ -8146,7 +8147,7 @@ def get_certificate_by_name(cert_name: str) -> Optional[Dict[str, Any]]:
                     return cert
         return None
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving certificate {cert_name}: {e}")
+        log("Error retrieving certificate {cert_name}: {e}")
         return None
 
 def get_certificate_by_uuid(cert_uuid: str) -> Optional[Dict[str, Any]]:
@@ -8166,7 +8167,7 @@ def get_certificate_by_uuid(cert_uuid: str) -> Optional[Dict[str, Any]]:
                     return cert
         return None
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving certificate with UUID {cert_uuid}: {e}")
+        log("Error retrieving certificate with UUID {cert_uuid}: {e}")
         return None
 
 def get_expiring_certificates(days_threshold: int = 30) -> List[Dict[str, Any]]:
@@ -8201,7 +8202,7 @@ def get_expiring_certificates(days_threshold: int = 30) -> List[Dict[str, Any]]:
         
         return expiring_certs
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving expiring certificates: {e}")
+        log("Error retrieving expiring certificates: {e}")
         return []
 
 def get_certificate_summary() -> Dict[str, Any]:
@@ -8237,7 +8238,7 @@ def get_certificate_summary() -> Dict[str, Any]:
         
         return summary
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving certificate summary: {e}")
+        log("Error retrieving certificate summary: {e}")
         return {}
 
 
@@ -8264,7 +8265,7 @@ def get_firewall_connections() -> List[Dict[str, Any]]:
         firewall_data = _cs_client.get('status/firewall')
         return firewall_data.get('connections', []) if firewall_data else []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving firewall connections: {e}")
+        log("Error retrieving firewall connections: {e}")
         return []
 
 def get_firewall_hitcounters() -> List[Dict[str, Any]]:
@@ -8283,7 +8284,7 @@ def get_firewall_hitcounters() -> List[Dict[str, Any]]:
         firewall_data = _cs_client.get('status/firewall')
         return firewall_data.get('hitcounter', []) if firewall_data else []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving firewall hit counters: {e}")
+        log("Error retrieving firewall hit counters: {e}")
         return []
 
 def get_firewall_marks() -> Dict[str, Any]:
@@ -8296,7 +8297,7 @@ def get_firewall_marks() -> Dict[str, Any]:
         firewall_data = _cs_client.get('status/firewall')
         return firewall_data.get('marks', {}) if firewall_data else {}
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving firewall marks: {e}")
+        log("Error retrieving firewall marks: {e}")
         return {}
 
 def get_firewall_state_timeouts() -> Dict[str, Any]:
@@ -8314,7 +8315,7 @@ def get_firewall_state_timeouts() -> Dict[str, Any]:
         firewall_data = _cs_client.get('status/firewall')
         return firewall_data.get('state_timeouts', {}) if firewall_data else {}
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving firewall state timeouts: {e}")
+        log("Error retrieving firewall state timeouts: {e}")
         return {}
 
 def get_firewall_connections_by_protocol(protocol: int = 6) -> List[Dict[str, Any]]:
@@ -8332,7 +8333,7 @@ def get_firewall_connections_by_protocol(protocol: int = 6) -> List[Dict[str, An
             return [conn for conn in firewall_data['connections'] if conn.get('proto') == protocol]
         return []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving firewall connections for protocol {protocol}: {e}")
+        log("Error retrieving firewall connections for protocol {protocol}: {e}")
         return []
 
 def get_firewall_connections_by_ip(ip_address: str = '') -> List[Dict[str, Any]]:
@@ -8357,7 +8358,7 @@ def get_firewall_connections_by_ip(ip_address: str = '') -> List[Dict[str, Any]]
             return matching_connections
         return []
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving firewall connections for IP {ip_address}: {e}")
+        log("Error retrieving firewall connections for IP {ip_address}: {e}")
         return []
 
 def get_firewall_summary() -> Dict[str, Any]:
@@ -8391,7 +8392,7 @@ def get_firewall_summary() -> Dict[str, Any]:
         
         return summary
     except Exception as e:
-        _cs_client.logger.exception(f"Error retrieving firewall summary: {e}")
+        log("Error retrieving firewall summary: {e}")
         return {}
 
 
