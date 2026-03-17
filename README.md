@@ -56,7 +56,7 @@ Ready-to-use applications you can install from the [releases page](https://githu
     - Just a holder for dynamic_app. See dynamic_app.
     - **Download:** [app_holder v1.0.3.tar.gz](https://github.com/cradlepoint/sdk-samples/releases/download/built_apps/app_holder.v1.0.3.tar.gz)
 - **cli_sample**
-    - Includes csterm module that enables access to local CLI to send commands and return output.
+    - Includes csterm module that enables access to local CLI to send commands and return output
     - **Download:** [cli_sample v1.0.3.tar.gz](https://github.com/cradlepoint/sdk-samples/releases/download/built_apps/cli_sample.v1.0.3.tar.gz)
 - **clients**
     - Puts the LAN clients in the asset_id field, or specify another field in SDK Appdata.
